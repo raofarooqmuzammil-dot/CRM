@@ -9,14 +9,14 @@ export default function Login({ searchParams }) {
       email: formData.get('email'),
       password: formData.get('password'),
     });
-    if (error) redirect('/login?error=1');
+    if (error) redirect('/login?error=' + encodeURIComponent(error.message));
     redirect('/persons');
   }
 
   return (
     <div className="login">
       <h1>Sign in to Call CRM</h1>
-      {searchParams?.error && <p className="error">Email or password is wrong. Try again.</p>}
+      {searchParams?.error && <p className="error">{searchParams.error}</p>}
       <form action={signIn}>
         <label>Email<input name="email" type="email" required autoFocus /></label>
         <label>Password<input name="password" type="password" required /></label>

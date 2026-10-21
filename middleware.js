@@ -27,7 +27,7 @@ export async function middleware(request) {
   }
   if (user && onLogin) {
     const url = request.nextUrl.clone();
-    url.pathname = '/persons';
+    url.pathname = '/today';
     url.search = '';
     return NextResponse.redirect(url);
   }

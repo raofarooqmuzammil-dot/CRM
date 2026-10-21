@@ -29,3 +29,16 @@ th{font-size:13px;color:var(--muted);font-weight:500}
 .login{max-width:340px;margin:12vh auto;padding:0 16px}
 .login form{display:grid;gap:12px}
 .error{color:var(--warn);margin:0 0 12px}
+button.ghost{background:transparent;color:var(--accent);border:1px solid var(--line)}
+button.ghost:hover{border-color:var(--accent)}
+button.danger{color:var(--warn)}
+.presets{display:flex;gap:6px;flex-wrap:wrap;align-items:end}
+.pick{border:1px solid var(--line);border-radius:6px;background:#fff;position:relative}
+.pick summary{padding:8px 10px;cursor:pointer;color:var(--ink);font-size:15px}
+.pick .menu{position:absolute;z-index:5;left:-1px;right:-1px;top:100%;background:#fff;border:1px solid var(--line);border-radius:0 0 6px 6px;padding:8px 10px;display:grid;gap:6px;max-height:220px;overflow:auto}
+.pick .menu label.check{padding:0;color:var(--ink);font-size:15px}
+.row-form{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+.row-form input[type=color]{width:40px;height:36px;padding:2px}
+.row-form input:not([type=color]){flex:1;max-width:260px}
+.when{white-space:nowrap;width:1%}
+h2.late{color:var(--warn)}

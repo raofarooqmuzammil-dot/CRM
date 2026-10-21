@@ -1,27 +1,33 @@
+import Link from 'next/link';
 import { revalidatePath } from 'next/cache';
 import { createClient } from '../../../lib/supabase/server';
+import LocalTime from '../../../components/LocalTime';
+import LabelTags from '../../../components/LabelTags';
 
 export default async function Persons() {
   const supabase = createClient();
-  const [{ data: persons }, { data: orgs }] = await Promise.all([
+  const [{ data: persons }, { data: orgs }, { data: labels }, { data: upcoming }] = await Promise.all([
     supabase
       .from('persons')
-      .select('id, name, phone, email, labels, visible_to, do_not_call, organizations(name), owner:profiles!persons_owner_id_fkey(full_name)')
+      .select('id, name, phone, email, label_ids, visible_to, do_not_call, organizations(name), owner:profiles!persons_owner_id_fkey(full_name)')
       .order('created_at', { ascending: false }),
     supabase.from('organizations').select('id, name').order('name'),
+    supabase.from('labels').select('id, name, color').order('name'),
+    supabase.from('activities').select('person_id, due_at').eq('done', false).not('person_id', 'is', null).order('due_at'),
   ]);
+  const next = new Map();
+  (upcoming || []).forEach((a) => { if (!next.has(a.person_id)) next.set(a.person_id, a.due_at); });
 
   async function addPerson(formData) {
     'use server';
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
-    const labels = String(formData.get('labels') || '').split(',').map((s) => s.trim()).filter(Boolean);
     const { error } = await supabase.from('persons').insert({
       name: formData.get('name'),
       organization_id: formData.get('organization_id') || null,
       phone: formData.get('phone') || null,
       email: formData.get('email') || null,
-      labels,
+      label_ids: formData.getAll('label_ids'),
       visible_to: formData.get('visible_to'),
       do_not_call: formData.get('do_not_call') === 'on',
       owner_id: user.id,
@@ -44,7 +50,19 @@ export default async function Persons() {
           </label>
           <label>Phone<input name="phone" type="tel" /></label>
           <label>Email<input name="email" type="email" /></label>
-          <label>Labels (comma separated)<input name="labels" /></label>
+          <label>Labels
+            <details className="pick">
+              <summary>Choose labels</summary>
+              <div className="menu">
+                {labels?.length
+                  ? labels.map((l) => (
+                      <label className="check" key={l.id}>
+                        <input type="checkbox" name="label_ids" value={l.id} /> {l.name}
+                      </label>))
+                  : <span className="muted">No labels yet. Add some in Settings.</span>}
+              </div>
+            </details>
+          </label>
           <label>Visible to
             <select name="visible_to"><option value="everyone">Everyone</option>
               <option value="private">Private (me and admin)</option></select>
@@ -56,19 +74,19 @@ export default async function Persons() {
       <section className="panel">
         {persons?.length ? (
           <table>
-            <thead><tr><th>Name</th><th>Organization</th><th>Phone</th><th>Email</th><th>Labels</th><th>Owner</th></tr></thead>
+            <thead><tr><th>Name</th><th>Organization</th><th>Phone</th><th>Labels</th><th>Next follow-up</th><th>Owner</th></tr></thead>
             <tbody>
               {persons.map((p) => (
                 <tr key={p.id}>
                   <td>
-                    {p.name}{' '}
+                    <Link href={`/persons/${p.id}`}>{p.name}</Link>{' '}
                     {p.visible_to === 'private' && <span className="tag">Private</span>}
                     {p.do_not_call && <span className="tag warn">Do not call</span>}
                   </td>
                   <td>{p.organizations?.name}</td>
                   <td>{p.phone && <a href={`tel:${p.phone}`}>{p.phone}</a>}</td>
-                  <td>{p.email}</td>
-                  <td>{p.labels?.map((l) => <span className="tag" key={l}>{l}</span>)}</td>
+                  <td><LabelTags ids={p.label_ids} labels={labels} /></td>
+                  <td>{next.has(p.id) ? <LocalTime iso={next.get(p.id)} /> : <span className="muted">None</span>}</td>
                   <td>{p.owner?.full_name}</td>
                 </tr>
               ))}

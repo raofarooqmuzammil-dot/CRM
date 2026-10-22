@@ -7,6 +7,16 @@ import LogCall from '../../../../components/LogCall';
 import LocalTime from '../../../../components/LocalTime';
 import LabelTags from '../../../../components/LabelTags';
 
+// Kept outside the component: server actions must not capture functions from the page.
+const fields = (fd) => ({
+  title: fd.get('title'),
+  type: fd.get('type'),
+  due_at: fd.get('due_at'),
+  location: fd.get('location') || null,
+  description: fd.get('description') || null,
+  video_call: fd.get('video_call') === 'on',
+});
+
 export default async function PersonPage({ params }) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -36,11 +46,6 @@ export default async function PersonPage({ params }) {
   const mine = open.find((a) => a.assigned_to === user.id);
   const hint = mine ? `Logging this call will mark "${mine.title}" as done.` : '';
 
-  const fields = (fd) => ({
-    title: fd.get('title'), type: fd.get('type'), due_at: fd.get('due_at'),
-    location: fd.get('location') || null, description: fd.get('description') || null,
-    video_call: fd.get('video_call') === 'on',
-  });
   async function schedule(fd) {
     'use server';
     const s = createClient();

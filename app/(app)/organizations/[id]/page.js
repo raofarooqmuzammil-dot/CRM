@@ -2,6 +2,8 @@ import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { createClient } from '../../../../lib/supabase/server';
+import { CustomInputs, CustomValues } from '../../../../components/CustomFields';
+import { loadFields, collectCustom } from '../../../../lib/custom';
 
 const ZONES = [
   ['America/New_York', 'US Eastern'], ['America/Chicago', 'US Central'],
@@ -15,9 +17,10 @@ export default async function OrganizationPage({ params }) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   const { data: org } = await supabase.from('organizations')
-    .select('id, name, phone, website, address, country, time_zone, visible_to, owner_id, label_ids')
+    .select('id, name, phone, website, address, country, time_zone, visible_to, owner_id, label_ids, custom')
     .eq('id', params.id).maybeSingle();
   if (!org) notFound();
+  const cfields = await loadFields(supabase, 'organization');
   const [{ data: me }, { data: people }, { data: members }, { data: labels }] = await Promise.all([
     supabase.from('profiles').select('role').eq('id', user.id).single(),
     supabase.from('profiles').select('id, full_name').order('full_name'),
@@ -27,7 +30,11 @@ export default async function OrganizationPage({ params }) {
 
   async function updateOrg(fd) {
     'use server';
-    const { error } = await createClient().from('organizations').update({
+    const s = createClient();
+    const fl = await loadFields(s, 'organization');
+    const { data: cur } = await s.from('organizations').select('custom').eq('id', params.id).single();
+    const { error } = await s.from('organizations').update({
+      custom: collectCustom(fd, fl, cur?.custom || {}),
       name: fd.get('name'), phone: fd.get('phone') || null, website: fd.get('website') || null,
       address: fd.get('address') || null, country: fd.get('country') || null,
       time_zone: fd.get('time_zone') || null, visible_to: fd.get('visible_to'),
@@ -49,6 +56,9 @@ export default async function OrganizationPage({ params }) {
     <>
       <p><Link href="/organizations">Back to organizations</Link></p>
       <h1>{org.name}</h1>
+      {cfields.some((f) => org.custom?.[f.id] !== undefined && org.custom?.[f.id] !== '') && (
+        <section className="panel"><CustomValues fields={cfields} values={org.custom} /></section>
+      )}
       <section className="panel">
         <h2>People ({members?.length || 0})</h2>
         {members?.length ? (
@@ -97,6 +107,7 @@ export default async function OrganizationPage({ params }) {
             <select name="visible_to" defaultValue={org.visible_to}><option value="everyone">Everyone</option>
               <option value="private">Private (owner and admin)</option></select>
           </label>
+          <CustomInputs fields={cfields} values={org.custom} />
           <button type="submit">Save organization</button>
           {me?.role === 'admin' && <button type="submit" className="ghost danger" formAction={deleteOrg} formNoValidate>Delete organization</button>}
         </form>

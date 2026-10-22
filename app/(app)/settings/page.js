@@ -43,6 +43,11 @@ export default async function Settings() {
     <>
       <h1>Settings</h1>
       <section className="panel">
+        <h2>Custom fields</h2>
+        <p className="muted">Add, rename, hide, or remove extra columns like Website or LinkedIn.</p>
+        <Link href="/settings/fields">Manage custom fields</Link>
+      </section>
+      <section className="panel">
         <h2>Pipelines and stages</h2>
         <p className="muted">Add, rename, reorder, or remove deal stages and pipelines.</p>
         <Link href="/settings/pipelines">Manage pipelines and stages</Link>

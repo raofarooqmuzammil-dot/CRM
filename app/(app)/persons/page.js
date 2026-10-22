@@ -3,14 +3,18 @@ import { revalidatePath } from 'next/cache';
 import { createClient } from '../../../lib/supabase/server';
 import LocalTime from '../../../components/LocalTime';
 import LabelTags from '../../../components/LabelTags';
+import AddColumn from '../../../components/AddColumn';
+import { CustomInputs, formatValue } from '../../../components/CustomFields';
+import { loadFields, collectCustom } from '../../../lib/custom';
 
 export default async function Persons({ searchParams }) {
   const sp = searchParams || {};
   const supabase = createClient();
 
+  const cfields = await loadFields(supabase, 'person');
   let query = supabase
     .from('persons')
-    .select('id, name, phone, email, label_ids, visible_to, do_not_call, call_count, last_outcome, organizations(name), owner:profiles!persons_owner_id_fkey(full_name)')
+    .select('id, name, phone, email, label_ids, visible_to, do_not_call, call_count, last_outcome, custom, organizations(name), owner:profiles!persons_owner_id_fkey(full_name)')
     .order('created_at', { ascending: false })
     .limit(200);
   const term = String(sp.q || '').replace(/[%,()*]/g, ' ').trim();
@@ -44,6 +48,7 @@ export default async function Persons({ searchParams }) {
       label_ids: formData.getAll('label_ids'),
       visible_to: formData.get('visible_to'),
       do_not_call: formData.get('do_not_call') === 'on',
+      custom: collectCustom(formData, await loadFields(supabase, 'person')),
       owner_id: user.id,
       created_by: user.id,
     });
@@ -102,14 +107,16 @@ export default async function Persons({ searchParams }) {
               <option value="private">Private (me and admin)</option></select>
           </label>
           <label className="check"><input name="do_not_call" type="checkbox" /> Do not call</label>
+          <CustomInputs fields={cfields} />
           <button type="submit">Save person</button>
         </form>
       </details>
+      <AddColumn entity="person" />
       <section className="panel">
         <p className="muted">{persons?.length || 0}{persons?.length === 200 ? '+' : ''} {filtered ? 'matching' : ''} persons</p>
         {persons?.length ? (
           <table>
-            <thead><tr><th>Name</th><th>Organization</th><th>Phone</th><th>Labels</th><th>Calls</th><th>Next follow-up</th><th>Owner</th></tr></thead>
+            <thead><tr><th>Name</th><th>Organization</th><th>Phone</th><th>Labels</th><th>Calls</th><th>Next follow-up</th><th>Owner</th>{cfields.map((f) => <th key={f.id}>{f.name}</th>)}</tr></thead>
             <tbody>
               {persons.map((p) => (
                 <tr key={p.id}>
@@ -124,6 +131,7 @@ export default async function Persons({ searchParams }) {
                   <td>{p.call_count}{p.last_outcome && <div className="muted">{p.last_outcome}</div>}</td>
                   <td>{next.has(p.id) ? <LocalTime iso={next.get(p.id)} /> : <span className="muted">None</span>}</td>
                   <td>{p.owner?.full_name}</td>
+                  {cfields.map((f) => <td key={f.id}>{formatValue(f, p.custom?.[f.id])}</td>)}
                 </tr>
               ))}
             </tbody>

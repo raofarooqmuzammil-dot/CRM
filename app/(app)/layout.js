@@ -24,6 +24,7 @@ export default async function AppLayout({ children }) {
           <Link href="/persons">Persons</Link>
           <Link href="/organizations">Organizations</Link>
           <Link href="/deals">Deals</Link>
+          <Link href="/import">Import</Link>
           <Link href="/settings">Settings</Link>
           {profile?.role === 'admin' && <Link href="/team">Team</Link>}
         </nav>

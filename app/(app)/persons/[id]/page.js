@@ -6,6 +6,8 @@ import ScheduleForm from '../../../../components/ScheduleForm';
 import LogCall from '../../../../components/LogCall';
 import LocalTime from '../../../../components/LocalTime';
 import LabelTags from '../../../../components/LabelTags';
+import { CustomInputs, CustomValues } from '../../../../components/CustomFields';
+import { loadFields, collectCustom } from '../../../../lib/custom';
 
 // Kept outside the component: server actions must not capture functions from the page.
 const fields = (fd) => ({
@@ -22,9 +24,10 @@ export default async function PersonPage({ params }) {
   const { data: { user } } = await supabase.auth.getUser();
   const { data: person } = await supabase
     .from('persons')
-    .select('id, name, phone, email, label_ids, visible_to, do_not_call, notes, organization_id, owner_id, call_count, last_called_at, last_outcome, organizations(name), owner:profiles!persons_owner_id_fkey(full_name)')
+    .select('id, name, phone, email, label_ids, visible_to, do_not_call, notes, organization_id, owner_id, custom, call_count, last_called_at, last_outcome, organizations(name), owner:profiles!persons_owner_id_fkey(full_name)')
     .eq('id', params.id).maybeSingle();
   if (!person) notFound();
+  const cfields = await loadFields(supabase, 'person');
 
   const [{ data: me }, { data: labels }, { data: acts }, { data: calls }, { data: types }, { data: outcomes }, { data: orgs }, { data: people }] = await Promise.all([
     supabase.from('profiles').select('role').eq('id', user.id).single(),
@@ -83,7 +86,11 @@ export default async function PersonPage({ params }) {
   }
   async function updatePerson(fd) {
     'use server';
-    const { error } = await createClient().from('persons').update({
+    const s = createClient();
+    const fl = await loadFields(s, 'person');
+    const { data: cur } = await s.from('persons').select('custom').eq('id', params.id).single();
+    const { error } = await s.from('persons').update({
+      custom: collectCustom(fd, fl, cur?.custom || {}),
       name: fd.get('name'), organization_id: fd.get('organization_id') || null,
       phone: fd.get('phone') || null, email: fd.get('email') || null,
       label_ids: fd.getAll('label_ids'), visible_to: fd.get('visible_to'),
@@ -122,6 +129,7 @@ export default async function PersonPage({ params }) {
           {person.last_called_at && <> · Last: {person.last_outcome}, <LocalTime iso={person.last_called_at} /></>}
         </p>
         {person.notes && <p>{person.notes}</p>}
+        <CustomValues fields={cfields} values={person.custom} />
         {person.do_not_call && <p className="error">Marked Do not call. Do not phone this person.</p>}
       </section>
 
@@ -226,6 +234,7 @@ export default async function PersonPage({ params }) {
           </label>
           <label>Notes<input name="notes" defaultValue={person.notes || ''} /></label>
           <label className="check"><input name="do_not_call" type="checkbox" defaultChecked={person.do_not_call} /> Do not call</label>
+          <CustomInputs fields={cfields} values={person.custom} />
           <button type="submit">Save person</button>
           {isAdmin && <button type="submit" className="ghost danger" formAction={deletePerson} formNoValidate>Delete person</button>}
         </form>

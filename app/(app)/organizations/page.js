@@ -2,6 +2,9 @@ import Link from 'next/link';
 import { revalidatePath } from 'next/cache';
 import { createClient } from '../../../lib/supabase/server';
 import LabelTags from '../../../components/LabelTags';
+import AddColumn from '../../../components/AddColumn';
+import { CustomInputs, formatValue } from '../../../components/CustomFields';
+import { loadFields, collectCustom } from '../../../lib/custom';
 
 const ZONES = [
   ['America/New_York', 'US Eastern'], ['America/Chicago', 'US Central'],
@@ -14,8 +17,9 @@ const ZONES = [
 export default async function Organizations({ searchParams }) {
   const sp = searchParams || {};
   const supabase = createClient();
+  const cfields = await loadFields(supabase, 'organization');
   let query = supabase.from('organizations')
-    .select('id, name, phone, website, country, time_zone, visible_to, label_ids')
+    .select('id, name, phone, website, country, time_zone, visible_to, label_ids, custom')
     .order('created_at', { ascending: false }).limit(200);
   const term = String(sp.q || '').replace(/[%,()*]/g, ' ').trim();
   if (term) query = query.or(`name.ilike.%${term}%,phone.ilike.%${term}%,website.ilike.%${term}%`);
@@ -32,6 +36,7 @@ export default async function Organizations({ searchParams }) {
     const { data: { user } } = await supabase.auth.getUser();
     const { error } = await supabase.from('organizations').insert({
       name: formData.get('name'),
+      custom: collectCustom(formData, await loadFields(supabase, 'organization')),
       phone: formData.get('phone') || null,
       website: formData.get('website') || null,
       country: formData.get('country') || null,
@@ -95,20 +100,23 @@ export default async function Organizations({ searchParams }) {
             <select name="visible_to"><option value="everyone">Everyone</option>
               <option value="private">Private (me and admin)</option></select>
           </label>
+          <CustomInputs fields={cfields} />
           <button type="submit">Save organization</button>
         </form>
       </details>
+      <AddColumn entity="organization" />
       <section className="panel">
         <p className="muted">{orgs?.length || 0}{orgs?.length === 200 ? '+' : ''} {filtered ? 'matching' : ''} organizations</p>
         {orgs?.length ? (
           <table>
-            <thead><tr><th>Name</th><th>Labels</th><th>Phone</th><th>Website</th><th>Country</th><th>Time zone</th></tr></thead>
+            <thead><tr><th>Name</th><th>Labels</th><th>Phone</th><th>Website</th><th>Country</th><th>Time zone</th>{cfields.map((f) => <th key={f.id}>{f.name}</th>)}</tr></thead>
             <tbody>
               {orgs.map((o) => (
                 <tr key={o.id}>
                   <td><Link href={`/organizations/${o.id}`}>{o.name}</Link> {o.visible_to === 'private' && <span className="tag">Private</span>}</td>
                   <td><LabelTags ids={o.label_ids} labels={labels} /></td>
                   <td>{o.phone}</td><td>{o.website}</td><td>{o.country}</td><td>{o.time_zone}</td>
+                  {cfields.map((f) => <td key={f.id}>{formatValue(f, o.custom?.[f.id])}</td>)}
                 </tr>
               ))}
             </tbody>

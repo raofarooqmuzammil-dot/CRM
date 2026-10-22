@@ -42,3 +42,13 @@ button.danger{color:var(--warn)}
 .row-form input:not([type=color]){flex:1;max-width:260px}
 .when{white-space:nowrap;width:1%}
 h2.late{color:var(--warn)}
+.outcomes{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+button.ghost.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+button:disabled{opacity:.45;cursor:not-allowed}
+tr.sub td{padding-top:0;border-top:0}
+details>summary{cursor:pointer;color:var(--accent)}
+details.panel>summary{color:var(--ink);margin-bottom:12px}
+.user{border-bottom:1px solid var(--line);padding:10px 0}
+.user .who{min-width:200px}
+.user details{margin-top:6px}
+code{background:#eef0ee;padding:1px 5px;border-radius:4px}

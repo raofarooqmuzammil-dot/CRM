@@ -100,6 +100,7 @@ export default async function PersonPage({ params }) {
     <>
       <p><Link href="/persons">Back to persons</Link></p>
       <h1>{person.name}</h1>
+      <p><Link href={`/deals?person=${person.id}`}>Create a deal for this person</Link></p>
       <section className="panel">
         <p>
           {person.organizations?.name && <strong>{person.organizations.name} </strong>}

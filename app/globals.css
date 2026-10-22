@@ -52,3 +52,13 @@ details.panel>summary{color:var(--ink);margin-bottom:12px}
 .user .who{min-width:200px}
 .user details{margin-top:6px}
 code{background:#eef0ee;padding:1px 5px;border-radius:4px}
+.board{display:flex;gap:12px;overflow-x:auto;align-items:flex-start;padding-bottom:12px}
+.col{min-width:250px;flex:1;background:#e9ece8;border-radius:8px;padding:10px}
+.col h2{margin:0}
+.col p{margin:2px 0 10px;font-size:13px}
+.card{background:#fff;border:1px solid var(--line);border-radius:6px;padding:10px;margin-bottom:8px;display:grid;gap:4px}
+.card select{width:100%;font-size:13px;padding:4px 6px}
+.tabs{display:flex;gap:6px;margin:0 0 16px}
+.tabs a{padding:6px 12px;border-radius:6px;text-decoration:none;border:1px solid var(--line);background:#fff}
+.tabs a.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+input.num{width:70px}

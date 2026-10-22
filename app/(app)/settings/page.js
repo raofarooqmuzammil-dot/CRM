@@ -1,9 +1,11 @@
+import Link from 'next/link';
 import { revalidatePath } from 'next/cache';
 import { createClient } from '../../../lib/supabase/server';
 
 const LISTS = [
   { table: 'labels', title: 'Labels', colored: true, note: 'Tags you can put on persons, like Hot or Warm.' },
   { table: 'activity_types', title: 'Activity types', colored: false, note: 'What is planned: Call, Follow-up, Meeting, Demo, and anything you add.' },
+  { table: 'lost_reasons', title: 'Lost reasons', colored: false, note: 'Why a deal was lost. Shown when you mark a deal lost.' },
   { table: 'call_outcomes', title: 'Call outcomes', colored: true, note: 'What happened on a call. These are the buttons when you log a call.' },
 ];
 const allowed = (t) => LISTS.find((l) => l.table === t);
@@ -40,6 +42,11 @@ export default async function Settings() {
   return (
     <>
       <h1>Settings</h1>
+      <section className="panel">
+        <h2>Pipelines and stages</h2>
+        <p className="muted">Add, rename, reorder, or remove deal stages and pipelines.</p>
+        <Link href="/settings/pipelines">Manage pipelines and stages</Link>
+      </section>
       {LISTS.map((l, i) => (
         <section className="panel" key={l.table}>
           <h2>{l.title}</h2>

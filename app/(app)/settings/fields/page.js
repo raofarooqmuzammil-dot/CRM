@@ -6,16 +6,26 @@ import AddColumn from '../../../../components/AddColumn';
 const ENTITIES = [['person', 'Person fields'], ['organization', 'Organization fields']];
 
 export default async function Fields() {
-  const { data } = await createClient().from('custom_fields').select('*').order('sort').order('created_at');
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  const [{ data }, { data: me }] = await Promise.all([
+    supabase.from('custom_fields').select('*').order('sort').order('created_at'),
+    supabase.from('profiles').select('role').eq('id', user.id).single(),
+  ]);
+  const isAdmin = me?.role === 'admin';
   return (
     <>
       <p><Link href="/settings">Back to settings</Link></p>
       <h1>Custom fields</h1>
-      <p className="muted">Add a column any time. Hiding a field keeps its data, so you can bring it back. Deleting a field removes it for good. Type cannot be changed after creating.</p>
+      <p className="muted">
+        {isAdmin
+          ? 'Anyone on the team can add a column. Only you can rename, hide, or delete one. Hiding keeps the data; deleting removes the column for good.'
+          : 'Anyone can add a column. Only the admin can rename, hide, or delete columns.'}
+      </p>
       {ENTITIES.map(([entity, title]) => (
         <section className="panel" key={entity}>
           <h2>{title}</h2>
-          {data?.filter((f) => f.entity === entity).map((f) => (
+          {data?.filter((f) => f.entity === entity).map((f) => isAdmin ? (
             <form className="row-form" action={saveField} key={f.id}>
               <input type="hidden" name="id" value={f.id} />
               <input name="sort" type="number" defaultValue={f.sort} aria-label="Order" className="num" />
@@ -26,12 +36,14 @@ export default async function Fields() {
               <button type="submit">Save</button>
               <button type="submit" className="ghost danger" formAction={deleteField} formNoValidate>Delete</button>
             </form>
+          ) : (
+            <p key={f.id}>{f.name} <span className="tag">{f.type}</span>{f.hidden && <span className="muted"> (hidden)</span>}</p>
           ))}
           {!data?.some((f) => f.entity === entity) && <p className="muted">No custom fields yet.</p>}
         </section>
       ))}
       <AddColumn entity="organization" />
-      <p className="muted">The form above adds an Organization field. To add a Person field, use + Add column on the Persons page.</p>
+      <p className="muted">The form above adds an Organization column. To add a Person column, use + Add column on the Persons page.</p>
     </>
   );
 }

@@ -63,3 +63,4 @@ code{background:#eef0ee;padding:1px 5px;border-radius:4px}
 .tabs a.on{background:var(--ink);color:#fff;border-color:var(--ink)}
 input.num{width:70px}
 .kv{margin-right:18px;display:inline-block}
+.panel.dup{border-color:#c2410c;background:#fff7f2}

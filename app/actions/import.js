@@ -2,9 +2,11 @@
 import { revalidatePath } from 'next/cache';
 import { createClient } from '../../lib/supabase/server';
 
-const phoneKey = (v) => { const d = String(v || '').replace(/\D/g, ''); return d ? d.slice(-9) : null; };
+const phoneKey = (v) => { const d = String(v || '').replace(/\D/g, ''); return d.length >= 7 ? d.slice(-9) : null; };
 const emailKey = (v) => { const e = String(v || '').trim().toLowerCase(); return e.includes('@') ? e : null; };
 const nameKey = (v) => String(v || '').trim().toLowerCase();
+// Internal bookkeeping keys start with an underscore and must never reach the database.
+const clean = (o) => Object.fromEntries(Object.entries(o).filter(([k]) => !k.startsWith('_')));
 const must = (res) => { if (res.error) throw new Error(res.error.message); return res.data || []; };
 
 function countryOf(v) {
@@ -31,23 +33,29 @@ const fillCustom = (t, vals) => {
   for (const [k, v] of Object.entries(vals)) if (t.custom[k] === undefined) t.custom[k] = v;
 };
 
+const REASONS = {
+  phone: 'Duplicate: same phone', email: 'Duplicate: same email',
+  name: 'Duplicate: same name', org: 'Duplicate: same organization',
+};
+
 export async function startBatch({ fileName, mapping, newFields }) {
   const s = createClient();
   const resolved = { ...mapping };
   for (const [header, nf] of Object.entries(newFields || {})) {
     if (mapping[header] !== 'new') continue;
     const row = must(await s.from('custom_fields').insert({ entity: nf.entity, name: String(nf.name).trim(), type: nf.type }).select('id').single());
-    resolved[header] = 'cf:' + (row.id);
+    resolved[header] = 'cf:' + row.id;
   }
   const batch = must(await s.from('import_batches').insert({ file_name: fileName }).select('id').single());
   const labelIds = {};
-  for (const [name, color] of [['Updated by import', '#2b6cb0'], ['Possible duplicate', '#c2410c']]) {
+  for (const [key, name] of Object.entries(REASONS)) {
     const ex = must(await s.from('labels').select('id').ilike('name', name).limit(1));
-    labelIds[name] = ex[0]?.id || must(await s.from('labels').insert({ name, color }).select('id').single()).id;
+    labelIds[key] = ex[0]?.id || must(await s.from('labels').insert({ name, color: '#c2410c' }).select('id').single()).id;
   }
   return { batchId: batch.id, mapping: resolved, labelIds };
 }
 
+// Every row is imported as its own record. Likely duplicates are only flagged, never merged.
 export async function importChunk({ batchId, mapping, labelIds, rows }) {
   const s = createClient();
   const { data: { user } } = await s.auth.getUser();
@@ -74,63 +82,52 @@ export async function importChunk({ batchId, mapping, labelIds, rows }) {
         if (f && v !== undefined) (f.entity === 'person' ? r.pc : r.oc)[f.id] = v;
       }
     }
-    r.pk = phoneKey(r.phone); r.ek = emailKey(r.email); r.nk = nameKey(r.company);
-    if (!r.name && !r.company && !r.pk && !r.ek) { skipped++; continue; }
+    r.pk = phoneKey(r.phone); r.ek = emailKey(r.email); r.nk = nameKey(r.company); r.pn = nameKey(r.name);
+    if (!r.name && !r.company && !r.phone && !r.email) { skipped++; continue; }
     parsed.push(r);
   }
 
-  const pks = [...new Set(parsed.map((r) => r.pk).filter(Boolean))];
-  const eks = [...new Set(parsed.map((r) => r.ek).filter(Boolean))];
-  const nks = [...new Set(parsed.map((r) => r.nk).filter(Boolean))];
-  const cols = 'id, name, phone, email, notes, custom, label_ids, organization_id';
-  const found = new Map();
-  if (pks.length) must(await s.from('persons').select(cols).in('phone_key', pks)).forEach((p) => found.set(p.id, p));
-  if (eks.length) must(await s.from('persons').select(cols).in('email_key', eks)).forEach((p) => found.set(p.id, p));
-  const orgIds = [...new Set([...found.values()].map((p) => p.organization_id).filter(Boolean))];
-  const orgById = new Map(orgIds.length
-    ? must(await s.from('organizations').select('id, website, address, country, custom').in('id', orgIds)).map((o) => [o.id, o]) : []);
+  const uniq = (k) => [...new Set(parsed.map((r) => r[k]).filter(Boolean))];
+  const pks = uniq('pk'), eks = uniq('ek'), nks = uniq('nk'), pns = uniq('pn');
+  const known = { phone: new Map(), email: new Map(), name: new Map() };
+  const add = (list) => list.forEach((p) => {
+    if (p.phone_key && !known.phone.has(p.phone_key)) known.phone.set(p.phone_key, p.id);
+    if (p.email_key && !known.email.has(p.email_key)) known.email.set(p.email_key, p.id);
+    if (p.name_key && !known.name.has(p.name_key)) known.name.set(p.name_key, p.id);
+  });
+  const cols = 'id, phone_key, email_key, name_key';
+  if (pks.length) add(must(await s.from('persons').select(cols).in('phone_key', pks)));
+  if (eks.length) add(must(await s.from('persons').select(cols).in('email_key', eks)));
+  if (pns.length) add(must(await s.from('persons').select(cols).in('name_key', pns)));
   const existingByName = new Map();
   if (nks.length) must(await s.from('organizations').select('id, name_key, import_batch_id').in('name_key', nks))
     .forEach((o) => existingByName.set(o.name_key, [...(existingByName.get(o.name_key) || []), o]));
 
-  const people = new Map();
-  const reg = (rec) => {
-    if (phoneKey(rec.phone)) people.set('p' + phoneKey(rec.phone), rec);
-    if (emailKey(rec.email)) people.set('e' + emailKey(rec.email), rec);
-  };
-  found.forEach((p) => { p._existing = true; p.label_ids = p.label_ids || []; reg(p); });
-
+  const inFile = { phone: new Map(), email: new Map(), name: new Map() };
   const orgPlan = new Map(); const newOrgs = []; const newPeople = [];
-  let created = 0, merged = 0, flagged = 0;
+  let flagged = 0;
 
   for (const r of parsed) {
-    const hit = (r.pk && people.get('p' + r.pk)) || (r.ek && people.get('e' + r.ek));
-    if (hit) {
-      fill(hit, 'phone', r.phone); fill(hit, 'email', r.email);
-      if (r.notes.length) fill(hit, 'notes', r.notes.join('\n'));
-      fillCustom(hit, r.pc);
-      const org = hit._existing ? orgById.get(hit.organization_id) : hit._org;
-      if (org && !org._ref) { fill(org, 'website', r.website); fill(org, 'address', r.address); fill(org, 'country', r.country); fillCustom(org, r.oc); org._dirty = true; }
-      if (hit._existing) {
-        if (!hit.label_ids.includes(labelIds['Updated by import'])) hit.label_ids.push(labelIds['Updated by import']);
-        hit._dirty = true;
-      }
-      reg(hit); merged++;
-      continue;
+    const reasons = []; let dupId = null; let dupRec = null;
+    for (const [kind, key] of [['phone', r.pk], ['email', r.ek], ['name', r.pn]]) {
+      if (!key) continue;
+      if (known[kind].has(key)) { reasons.push(kind); dupId = dupId || known[kind].get(key); }
+      else if (inFile[kind].has(key)) { reasons.push(kind); dupRec = dupRec || inFile[kind].get(key); }
     }
-    let org = null; let dup = false;
+    let org = null; let dupOrg = null;
     if (r.nk) {
+      const ex = existingByName.get(r.nk) || [];
+      const before = ex.filter((o) => o.import_batch_id !== batchId);
+      if (before.length) { reasons.push('org'); dupOrg = before[0].id; }
       org = orgPlan.get(r.nk);
       if (!org) {
-        const ex = existingByName.get(r.nk) || [];
         const same = ex.find((o) => o.import_batch_id === batchId);
         if (same) org = { id: same.id, _ref: true };
         else {
-          dup = ex.length > 0;
           org = {
             name: r.company, phone: r.phone || null, website: r.website || null, address: r.address || null,
             country: r.country || null, time_zone: r.country === 'UK' ? 'Europe/London' : null, custom: { ...r.oc },
-            label_ids: dup ? [labelIds['Possible duplicate']] : [], owner_id: user.id, created_by: user.id, import_batch_id: batchId,
+            label_ids: before.length ? [labelIds.org] : [], owner_id: user.id, created_by: user.id, import_batch_id: batchId,
           };
           newOrgs.push(org);
         }
@@ -141,26 +138,30 @@ export async function importChunk({ batchId, mapping, labelIds, rows }) {
     }
     const rec = {
       name: r.name || r.company || r.phone || r.email, phone: r.phone || null, email: r.email || null,
-      notes: r.notes.join('\n') || null, custom: { ...r.pc }, label_ids: dup ? [labelIds['Possible duplicate']] : [],
-      owner_id: user.id, created_by: user.id, import_batch_id: batchId, _org: org,
+      notes: r.notes.join('\n') || null, custom: { ...r.pc }, label_ids: reasons.map((k) => labelIds[k]),
+      possible_duplicate: reasons.length > 0, duplicate_of: dupId, duplicate_of_org: dupOrg,
+      owner_id: user.id, created_by: user.id, import_batch_id: batchId, _org: org, _dupRec: dupRec,
     };
-    newPeople.push(rec); reg(rec); created++; if (dup) flagged++;
+    newPeople.push(rec);
+    if (reasons.length) flagged++;
+    if (r.pk && !inFile.phone.has(r.pk)) inFile.phone.set(r.pk, rec);
+    if (r.ek && !inFile.email.has(r.ek)) inFile.email.set(r.ek, rec);
+    if (r.name && r.pn && !inFile.name.has(r.pn)) inFile.name.set(r.pn, rec);
   }
 
   if (newOrgs.length) {
-    const ids = must(await s.from('organizations').insert(newOrgs).select('id'));
+    const ids = must(await s.from('organizations').insert(newOrgs.map(clean)).select('id'));
     newOrgs.forEach((o, i) => { o.id = ids[i].id; });
   }
   if (newPeople.length) {
-    must(await s.from('persons').insert(newPeople.map(({ _org, ...p }) => ({ ...p, organization_id: _org?.id || null }))));
+    const ids = must(await s.from('persons')
+      .insert(newPeople.map((p) => clean({ ...p, organization_id: p._org?.id || null }))).select('id'));
+    newPeople.forEach((p, i) => { p.id = ids[i].id; });
+    for (const p of newPeople) {
+      if (p._dupRec) must(await s.from('persons').update({ duplicate_of: p._dupRec.id }).eq('id', p.id));
+    }
   }
-  for (const p of found.values()) {
-    if (p._dirty) must(await s.from('persons').update({ phone: p.phone, email: p.email, notes: p.notes, custom: p.custom, label_ids: p.label_ids }).eq('id', p.id));
-  }
-  for (const o of orgById.values()) {
-    if (o._dirty) must(await s.from('organizations').update({ website: o.website, address: o.address, country: o.country, custom: o.custom }).eq('id', o.id));
-  }
-  return { created, merged, flagged, skipped };
+  return { created: newPeople.length, flagged, skipped };
 }
 
 export async function finishBatch({ batchId, stats }) {

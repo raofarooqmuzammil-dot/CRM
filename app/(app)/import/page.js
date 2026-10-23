@@ -24,10 +24,10 @@ export default async function ImportPage() {
               <tr key={b.id}>
                 <td>{b.file_name}</td>
                 <td className="muted"><LocalTime iso={b.created_at} /> · {b.creator?.full_name}</td>
-                <td className="muted">{b.stats ? `${b.stats.created} new, ${b.stats.merged} merged, ${b.stats.flagged} flagged` : 'unfinished'}</td>
+                <td className="muted">{b.stats ? `${b.stats.created} imported, ${b.stats.flagged} flagged` : 'unfinished'}</td>
                 <td>{me?.role === 'admin' && (
                   <form action={undoBatch}><input type="hidden" name="id" value={b.id} />
-                    <button className="ghost danger" type="submit">Undo (remove new records)</button></form>)}</td>
+                    <button className="ghost danger" type="submit">Undo (remove this import)</button></form>)}</td>
               </tr>
             ))}
           </tbody></table>

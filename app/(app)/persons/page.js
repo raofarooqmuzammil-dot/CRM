@@ -21,6 +21,7 @@ export default async function Persons({ searchParams }) {
   if (term) query = query.or(`name.ilike.%${term}%,phone.ilike.%${term}%,email.ilike.%${term}%`);
   if (sp.label) query = query.contains('label_ids', [sp.label]);
   if (sp.owner) query = query.eq('owner_id', sp.owner);
+  if (sp.dup) query = query.eq('possible_duplicate', true);
   if (sp.calls === 'none') query = query.eq('call_count', 0);
   if (sp.calls === 'few') query = query.gte('call_count', 1).lte('call_count', 2);
   if (sp.calls === 'many') query = query.gte('call_count', 3);
@@ -34,7 +35,7 @@ export default async function Persons({ searchParams }) {
   ]);
   const next = new Map();
   (upcoming || []).forEach((a) => { if (!next.has(a.person_id)) next.set(a.person_id, a.due_at); });
-  const filtered = Boolean(term || sp.label || sp.owner || sp.calls);
+  const filtered = Boolean(term || sp.label || sp.owner || sp.calls || sp.dup);
 
   async function addPerson(formData) {
     'use server';
@@ -74,6 +75,9 @@ export default async function Persons({ searchParams }) {
             <select name="calls" defaultValue={sp.calls || ''}><option value="">Any</option>
               <option value="none">Not called yet</option><option value="few">1 to 2 calls</option>
               <option value="many">3 or more calls</option></select>
+          </label>
+          <label>Duplicates
+            <select name="dup" defaultValue={sp.dup || ''}><option value="">All</option><option value="1">Possible duplicates only</option></select>
           </label>
           <button type="submit">Filter</button>
           {filtered && <Link href="/persons">Clear filters</Link>}

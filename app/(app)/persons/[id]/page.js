@@ -24,10 +24,14 @@ export default async function PersonPage({ params }) {
   const { data: { user } } = await supabase.auth.getUser();
   const { data: person } = await supabase
     .from('persons')
-    .select('id, name, phone, email, label_ids, visible_to, do_not_call, notes, organization_id, owner_id, custom, call_count, last_called_at, last_outcome, organizations(name), owner:profiles!persons_owner_id_fkey(full_name)')
+    .select('id, name, phone, email, label_ids, visible_to, do_not_call, notes, organization_id, owner_id, custom, possible_duplicate, duplicate_of, duplicate_of_org, call_count, last_called_at, last_outcome, organizations(name), owner:profiles!persons_owner_id_fkey(full_name)')
     .eq('id', params.id).maybeSingle();
   if (!person) notFound();
   const cfields = await loadFields(supabase, 'person');
+  const [{ data: dupP }, { data: dupO }] = await Promise.all([
+    person.duplicate_of ? supabase.from('persons').select('id, name, phone').eq('id', person.duplicate_of).maybeSingle() : { data: null },
+    person.duplicate_of_org ? supabase.from('organizations').select('id, name').eq('id', person.duplicate_of_org).maybeSingle() : { data: null },
+  ]);
 
   const [{ data: me }, { data: labels }, { data: acts }, { data: calls }, { data: types }, { data: outcomes }, { data: orgs }, { data: people }] = await Promise.all([
     supabase.from('profiles').select('role').eq('id', user.id).single(),
@@ -84,6 +88,19 @@ export default async function PersonPage({ params }) {
     if (at) await s.from('activities').insert({ title: 'Follow-up call', type: 'Call', due_at: at, person_id: params.id, assigned_to: user.id, created_by: user.id });
     revalidatePath('/', 'layout');
   }
+  async function dismissDuplicate() {
+    'use server';
+    const s = createClient();
+    const { data: dl } = await s.from('labels').select('id').ilike('name', 'Duplicate:%');
+    const ids = (dl || []).map((l) => l.id);
+    const { data: cur } = await s.from('persons').select('label_ids').eq('id', params.id).single();
+    const { error } = await s.from('persons').update({
+      possible_duplicate: false, duplicate_of: null, duplicate_of_org: null,
+      label_ids: (cur?.label_ids || []).filter((x) => !ids.includes(x)),
+    }).eq('id', params.id);
+    if (error) throw new Error(error.message);
+    revalidatePath('/', 'layout');
+  }
   async function updatePerson(fd) {
     'use server';
     const s = createClient();
@@ -133,6 +150,18 @@ export default async function PersonPage({ params }) {
         {person.do_not_call && <p className="error">Marked Do not call. Do not phone this person.</p>}
       </section>
 
+      {person.possible_duplicate && (
+        <section className="panel dup">
+          <h2>Possible duplicate</h2>
+          <p>
+            {dupP && <>Matches person <Link href={`/persons/${dupP.id}`}>{dupP.name}</Link>{dupP.phone && ` (${dupP.phone})`}. </>}
+            {dupO && <>Same organization name as <Link href={`/organizations/${dupO.id}`}>{dupO.name}</Link>. </>}
+            {!dupP && !dupO && 'Matches another record from the same file or one that has since been removed.'}
+            {' '}See the orange tags for the reason.
+          </p>
+          <form action={dismissDuplicate}><button type="submit" className="ghost">Not a duplicate</button></form>
+        </section>
+      )}
       <section className="panel">
         <h2>Log a call</h2>
         <LogCall action={logCall} personId={person.id} outcomes={outcomes || []} hint={hint} />

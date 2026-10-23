@@ -52,7 +52,7 @@ export default function ImportWizard({ fields, startBatch, importChunk, finishBa
     try {
       const { batchId, mapping, labelIds } = await startBatch({ fileName: file.name, mapping: map, newFields: nf });
       try { localStorage.setItem('callcrm-map:' + data.headers.join('|'), JSON.stringify(mapping)); } catch {}
-      const total = { created: 0, merged: 0, flagged: 0, skipped: 0 };
+      const total = { created: 0, flagged: 0, skipped: 0 };
       for (let i = 0; i < data.rows.length; i += 100) {
         const r = await importChunk({ batchId, mapping, labelIds, rows: data.rows.slice(i, i + 100) });
         Object.keys(total).forEach((k) => { total[k] += r[k]; });
@@ -109,11 +109,11 @@ export default function ImportWizard({ fields, startBatch, importChunk, finishBa
             </tbody>
           </table>
           {!useful && <p className="error">Match at least one column to a name, company, phone, or email.</p>}
-          <p className="muted">Records with the same phone or email as one already here are merged: empty fields get filled and nothing is deleted. Same company name with a different phone is imported and tagged Possible duplicate.</p>
+          <p className="muted">Every row is imported as its own record and nothing is merged. A row that matches an existing record on phone, email, person name, or organization name gets an orange Duplicate tag. Filter for them on the Persons page.</p>
           <button disabled={!useful || running} onClick={run}>{running ? `Importing... ${st.done} of ${data.rows.length}` : `Import ${data.rows.length} rows`}</button>
           {st.error && <p className="error">{st.error}</p>}
           {st.phase === 'done' && (
-            <p><strong>Done.</strong> {st.stats.created} new, {st.stats.merged} merged into existing records, {st.stats.flagged} tagged Possible duplicate, {st.stats.skipped} skipped (empty rows). <a href="/persons">View persons</a></p>
+            <p><strong>Done.</strong> {st.stats.created} imported, {st.stats.flagged} flagged as possible duplicates, {st.stats.skipped} skipped (empty rows). <a href="/persons">View persons</a></p>
           )}
         </section>
       )}

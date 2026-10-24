@@ -1,6 +1,7 @@
 'use server';
 import { revalidatePath } from 'next/cache';
 import { createClient } from '../../lib/supabase/server';
+import { guessZone, parseZone } from '../../lib/tzguess';
 
 const phoneKey = (v) => { const d = String(v || '').replace(/\D/g, ''); return d.length >= 7 ? d.slice(-9) : null; };
 const emailKey = (v) => { const e = String(v || '').trim().toLowerCase(); return e.includes('@') ? e : null; };
@@ -75,6 +76,7 @@ export async function importChunk({ batchId, mapping, labelIds, rows }) {
       else if (target === 'org.country') r.country = countryOf(raw);
       else if (target === 'org.website') r.website = raw;
       else if (target === 'org.address') r.address = raw;
+      else if (target === 'time_zone') r.tzRaw = raw;
       else if (target === 'notes') r.notes.push(`${h}: ${raw}`);
       else if (target.startsWith('cf:')) {
         const f = defs.get(target.slice(3));
@@ -84,6 +86,9 @@ export async function importChunk({ batchId, mapping, labelIds, rows }) {
     }
     r.pk = phoneKey(r.phone); r.ek = emailKey(r.email); r.nk = nameKey(r.company); r.pn = nameKey(r.name);
     if (!r.name && !r.company && !r.phone && !r.email) { skipped++; continue; }
+    r.zone = parseZone(r.tzRaw); r.guessed = false;
+    if (!r.zone && r.country === 'UK') r.zone = 'Europe/London';
+    if (!r.zone) { r.zone = guessZone({ phone: r.phone, country: r.country, address: r.address }); r.guessed = Boolean(r.zone); }
     parsed.push(r);
   }
 
@@ -126,7 +131,7 @@ export async function importChunk({ batchId, mapping, labelIds, rows }) {
         else {
           org = {
             name: r.company, phone: r.phone || null, website: r.website || null, address: r.address || null,
-            country: r.country || null, time_zone: r.country === 'UK' ? 'Europe/London' : null, custom: { ...r.oc },
+            country: r.country || null, time_zone: r.zone, time_zone_guessed: r.guessed, custom: { ...r.oc },
             label_ids: before.length ? [labelIds.org] : [], owner_id: user.id, created_by: user.id, import_batch_id: batchId,
           };
           newOrgs.push(org);
@@ -139,6 +144,7 @@ export async function importChunk({ batchId, mapping, labelIds, rows }) {
     const rec = {
       name: r.name || r.company || r.phone || r.email, phone: r.phone || null, email: r.email || null,
       notes: r.notes.join('\n') || null, custom: { ...r.pc }, label_ids: reasons.map((k) => labelIds[k]),
+      time_zone: org ? null : r.zone, time_zone_guessed: org ? false : r.guessed,
       possible_duplicate: reasons.length > 0, duplicate_of: dupId, duplicate_of_org: dupOrg,
       owner_id: user.id, created_by: user.id, import_batch_id: batchId, _org: org, _dupRec: dupRec,
     };

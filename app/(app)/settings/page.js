@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { getHours } from '../../../lib/hours';
 import { revalidatePath } from 'next/cache';
 import { createClient } from '../../../lib/supabase/server';
 
@@ -26,9 +27,21 @@ async function save(fd, mode) {
 
 export default async function Settings() {
   const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  const [{ data: me }, hours] = await Promise.all([
+    supabase.from('profiles').select('role').eq('id', user.id).single(), getHours(supabase),
+  ]);
   const data = await Promise.all(LISTS.map((l) =>
     supabase.from(l.table).select('*').order(l.table === 'labels' ? 'name' : 'sort').order('created_at')));
 
+  async function saveHours(fd) {
+    'use server';
+    const start = Number(fd.get('start')), end = Number(fd.get('end'));
+    if (!(start >= 0 && end <= 24 && start < end)) throw new Error('Start must be before end');
+    const { error } = await createClient().from('app_settings').upsert({ key: 'business_hours', value: { start, end } });
+    if (error) throw new Error(error.message);
+    revalidatePath('/', 'layout');
+  }
   async function addItem(fd) { 'use server'; await save(fd, 'add'); }
   async function saveItem(fd) { 'use server'; await save(fd, 'edit'); }
   async function deleteItem(fd) {
@@ -42,6 +55,18 @@ export default async function Settings() {
   return (
     <>
       <h1>Settings</h1>
+      <section className="panel">
+        <h2>Business hours</h2>
+        <p className="muted">Used by the Calling now filter, in each person's own time zone, on weekdays.</p>
+        {me?.role === 'admin' ? (
+          <form className="row-form" action={saveHours}>
+            <input name="start" type="number" min="0" max="23" defaultValue={hours.start} className="num" aria-label="Start hour" />
+            <span>to</span>
+            <input name="end" type="number" min="1" max="24" defaultValue={hours.end} className="num" aria-label="End hour" />
+            <button type="submit">Save</button>
+          </form>
+        ) : <p>{hours.start}:00 to {hours.end}:00 (set by the admin)</p>}
+      </section>
       <section className="panel">
         <h2>Custom fields</h2>
         <p className="muted">Add, rename, hide, or remove extra columns like Website or LinkedIn.</p>

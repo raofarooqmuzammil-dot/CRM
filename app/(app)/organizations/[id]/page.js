@@ -1,23 +1,16 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
+import { ZONES } from '../../../../lib/zones';
 import { createClient } from '../../../../lib/supabase/server';
 import { CustomInputs, CustomValues } from '../../../../components/CustomFields';
 import { loadFields, collectCustom } from '../../../../lib/custom';
-
-const ZONES = [
-  ['America/New_York', 'US Eastern'], ['America/Chicago', 'US Central'],
-  ['America/Denver', 'US Mountain'], ['America/Los_Angeles', 'US Pacific'],
-  ['Europe/London', 'UK'], ['Australia/Sydney', 'AU Sydney / Melbourne'],
-  ['Australia/Brisbane', 'AU Brisbane'], ['Australia/Adelaide', 'AU Adelaide'],
-  ['Australia/Perth', 'AU Perth'],
-];
 
 export default async function OrganizationPage({ params }) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   const { data: org } = await supabase.from('organizations')
-    .select('id, name, phone, website, address, country, time_zone, visible_to, owner_id, label_ids, custom')
+    .select('id, name, phone, website, address, country, time_zone, visible_to, owner_id, label_ids, custom, time_zone_guessed')
     .eq('id', params.id).maybeSingle();
   if (!org) notFound();
   const cfields = await loadFields(supabase, 'organization');
@@ -32,12 +25,13 @@ export default async function OrganizationPage({ params }) {
     'use server';
     const s = createClient();
     const fl = await loadFields(s, 'organization');
-    const { data: cur } = await s.from('organizations').select('custom').eq('id', params.id).single();
+    const { data: cur } = await s.from('organizations').select('custom, time_zone, time_zone_guessed').eq('id', params.id).single();
     const { error } = await s.from('organizations').update({
       custom: collectCustom(fd, fl, cur?.custom || {}),
       name: fd.get('name'), phone: fd.get('phone') || null, website: fd.get('website') || null,
       address: fd.get('address') || null, country: fd.get('country') || null,
-      time_zone: fd.get('time_zone') || null, visible_to: fd.get('visible_to'),
+      time_zone: fd.get('time_zone') || null,
+      time_zone_guessed: (fd.get('time_zone') || null) === cur?.time_zone ? Boolean(cur?.time_zone_guessed) : false, visible_to: fd.get('visible_to'),
       owner_id: fd.get('owner_id') || null,
       label_ids: fd.getAll('label_ids'),
     }).eq('id', params.id);
@@ -85,7 +79,7 @@ export default async function OrganizationPage({ params }) {
               <option value="US">United States</option><option value="UK">United Kingdom</option>
               <option value="AU">Australia</option></select>
           </label>
-          <label>Time zone
+          <label>Time zone{org.time_zone_guessed && ' (guessed, please check)'}
             <select name="time_zone" defaultValue={org.time_zone || ''}><option value="">Not set</option>
               {ZONES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
           </label>

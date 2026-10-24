@@ -5,13 +5,14 @@ import Papa from 'papaparse';
 const BASE = [
   ['skip', 'Skip this column'], ['person.name', 'Person name'], ['org.name', 'Organization (company) name'],
   ['phone', 'Phone'], ['email', 'Email'], ['org.country', 'Country'], ['org.website', 'Website'],
-  ['org.address', 'Address'], ['notes', 'Add to notes'],
+  ['org.address', 'Address'], ['time_zone', 'Time zone'], ['notes', 'Add to notes'],
 ];
 function guess(h) {
   const s = h.toLowerCase();
   if (/company|business|organi[sz]ation|^org/.test(s)) return 'org.name';
   if (/phone|tel|mobile/.test(s)) return 'phone';
   if (/e-?mail/.test(s)) return 'email';
+  if (/time ?zone|^tz$/.test(s)) return 'time_zone';
   if (/country/.test(s)) return 'org.country';
   if (/website|url|site|domain/.test(s)) return 'org.website';
   if (/address|location|city/.test(s)) return 'org.address';
@@ -109,7 +110,7 @@ export default function ImportWizard({ fields, startBatch, importChunk, finishBa
             </tbody>
           </table>
           {!useful && <p className="error">Match at least one column to a name, company, phone, or email.</p>}
-          <p className="muted">Every row is imported as its own record and nothing is merged. A row that matches an existing record on phone, email, person name, or organization name gets an orange Duplicate tag. Filter for them on the Persons page.</p>
+          <p className="muted">Rows without a time zone get a best guess from the address or phone, marked as guessed so you can check it. Every row is imported as its own record and nothing is merged. A row that matches an existing record on phone, email, person name, or organization name gets an orange Duplicate tag. Filter for them on the Persons page.</p>
           <button disabled={!useful || running} onClick={run}>{running ? `Importing... ${st.done} of ${data.rows.length}` : `Import ${data.rows.length} rows`}</button>
           {st.error && <p className="error">{st.error}</p>}
           {st.phase === 'done' && (

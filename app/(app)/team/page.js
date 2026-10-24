@@ -14,7 +14,7 @@ async function requireAdmin() {
 export default async function Team() {
   const { s, user } = await requireAdmin().catch(() => redirect('/today'));
   const hasKey = Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY);
-  const { data: profiles } = await s.from('profiles').select('id, full_name, role, cloudtalk_agent_id').order('created_at');
+  const { data: profiles } = await s.from('profiles').select('id, full_name, role').order('created_at');
 
   const emails = new Map();
   if (hasKey) {
@@ -39,7 +39,7 @@ export default async function Team() {
   async function saveUser(fd) {
     'use server';
     const { s, user } = await requireAdmin();
-    const row = { full_name: String(fd.get('full_name')).trim(), cloudtalk_agent_id: fd.get('cloudtalk_agent_id') || null };
+    const row = { full_name: String(fd.get('full_name')).trim() };
     const role = fd.get('role');
     if (role && fd.get('id') !== user.id) row.role = role;
     const { error } = await s.from('profiles').update(row).eq('id', fd.get('id'));
@@ -88,7 +88,6 @@ export default async function Team() {
               {p.id === user.id
                 ? <span className="tag">{p.role} (you)</span>
                 : <select name="role" defaultValue={p.role} aria-label="Role"><option value="caller">Caller</option><option value="admin">Admin</option></select>}
-              <input name="cloudtalk_agent_id" defaultValue={p.cloudtalk_agent_id || ''} placeholder="CloudTalk agent ID" aria-label="CloudTalk agent ID" />
               <button type="submit">Save</button>
             </form>
             {hasKey && (

@@ -6,6 +6,8 @@ import ScheduleForm from '../../../../components/ScheduleForm';
 import LogCall from '../../../../components/LogCall';
 import LocalTime from '../../../../components/LocalTime';
 import LabelTags from '../../../../components/LabelTags';
+import { ZONES, localTime, inHours, zoneLabel } from '../../../../lib/zones';
+import { getHours } from '../../../../lib/hours';
 import { CustomInputs, CustomValues } from '../../../../components/CustomFields';
 import { loadFields, collectCustom } from '../../../../lib/custom';
 
@@ -19,15 +21,21 @@ const fields = (fd) => ({
   video_call: fd.get('video_call') === 'on',
 });
 
-export default async function PersonPage({ params }) {
+export default async function PersonPage({ params, searchParams }) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   const { data: person } = await supabase
     .from('persons')
-    .select('id, name, phone, email, label_ids, visible_to, do_not_call, notes, organization_id, owner_id, custom, possible_duplicate, duplicate_of, duplicate_of_org, call_count, last_called_at, last_outcome, organizations(name), owner:profiles!persons_owner_id_fkey(full_name)')
+    .select('id, name, phone, email, label_ids, visible_to, do_not_call, notes, organization_id, owner_id, custom, possible_duplicate, duplicate_of, duplicate_of_org, call_count, last_called_at, last_outcome, last_called_by, time_zone, time_zone_guessed, eff_time_zone, organizations(name, time_zone_guessed), lastcaller:profiles!persons_last_called_by_fkey(full_name), owner:profiles!persons_owner_id_fkey(full_name)')
     .eq('id', params.id).maybeSingle();
   if (!person) notFound();
   const cfields = await loadFields(supabase, 'person');
+  const hours = await getHours(supabase);
+  const zone = person.eff_time_zone;
+  const guessed = person.time_zone ? person.time_zone_guessed : person.organizations?.time_zone_guessed;
+  const mins = person.last_called_at ? Math.round((Date.now() - new Date(person.last_called_at)) / 60000) : null;
+  const recentByOther = mins !== null && mins < 4320 && person.last_called_by && person.last_called_by !== user.id;
+  const agoText = mins < 1 ? 'just now' : mins < 60 ? `${mins} minutes ago` : mins < 1440 ? `${Math.round(mins / 60)} hours ago` : `${Math.round(mins / 1440)} days ago`;
   const [{ data: dupP }, { data: dupO }] = await Promise.all([
     person.duplicate_of ? supabase.from('persons').select('id, name, phone').eq('id', person.duplicate_of).maybeSingle() : { data: null },
     person.duplicate_of_org ? supabase.from('organizations').select('id, name').eq('id', person.duplicate_of_org).maybeSingle() : { data: null },
@@ -105,9 +113,11 @@ export default async function PersonPage({ params }) {
     'use server';
     const s = createClient();
     const fl = await loadFields(s, 'person');
-    const { data: cur } = await s.from('persons').select('custom').eq('id', params.id).single();
+    const { data: cur } = await s.from('persons').select('custom, time_zone, time_zone_guessed').eq('id', params.id).single();
     const { error } = await s.from('persons').update({
       custom: collectCustom(fd, fl, cur?.custom || {}),
+      time_zone: fd.get('time_zone') || null,
+      time_zone_guessed: (fd.get('time_zone') || null) === cur?.time_zone ? Boolean(cur?.time_zone_guessed) : false,
       name: fd.get('name'), organization_id: fd.get('organization_id') || null,
       phone: fd.get('phone') || null, email: fd.get('email') || null,
       label_ids: fd.getAll('label_ids'), visible_to: fd.get('visible_to'),
@@ -129,6 +139,12 @@ export default async function PersonPage({ params }) {
     <>
       <p><Link href="/persons">Back to persons</Link></p>
       <h1>{person.name}</h1>
+      {searchParams?.call && person.phone && !person.do_not_call && <p><a className="callbtn" href={`tel:${person.phone}`}>Call {person.phone}</a></p>}
+      {recentByOther && (
+        <section className="panel notice">
+          <strong>{person.lastcaller?.full_name || 'Someone'}</strong> called this {agoText}{person.last_outcome ? ` (${person.last_outcome})` : ''}. You can still call.
+        </section>
+      )}
       <p><Link href={`/deals?person=${person.id}`}>Create a deal for this person</Link></p>
       <section className="panel">
         <p>
@@ -141,6 +157,12 @@ export default async function PersonPage({ params }) {
           {person.phone && person.email && ' · '}
           {person.email && <a href={`mailto:${person.email}`}>{person.email}</a>}
         </p>
+        {zone && (
+          <p className="muted">
+            Local time {localTime(zone)} ({zoneLabel(zone)}{guessed ? ', guessed, please check' : ''})
+            {' · '}{inHours(zone, hours) ? 'inside business hours' : 'outside business hours'}
+          </p>
+        )}
         <p className="muted">
           Owner: {person.owner?.full_name || 'none'} · Calls: <strong>{person.call_count}</strong>
           {person.last_called_at && <> · Last: {person.last_outcome}, <LocalTime iso={person.last_called_at} /></>}
@@ -260,6 +282,10 @@ export default async function PersonPage({ params }) {
           <label>Visible to
             <select name="visible_to" defaultValue={person.visible_to}><option value="everyone">Everyone</option>
               <option value="private">Private (owner and admin)</option></select>
+          </label>
+          <label>Time zone
+            <select name="time_zone" defaultValue={person.time_zone || ''}><option value="">Same as organization</option>
+              {ZONES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
           </label>
           <label>Notes<input name="notes" defaultValue={person.notes || ''} /></label>
           <label className="check"><input name="do_not_call" type="checkbox" defaultChecked={person.do_not_call} /> Do not call</label>

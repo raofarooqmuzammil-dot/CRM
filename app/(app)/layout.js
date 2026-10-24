@@ -21,6 +21,7 @@ export default async function AppLayout({ children }) {
         <strong>Call CRM</strong>
         <nav>
           <Link href="/today">Today</Link>
+          <Link href="/quick-add">Quick add</Link>
           <Link href="/persons">Persons</Link>
           <Link href="/organizations">Organizations</Link>
           <Link href="/deals">Deals</Link>

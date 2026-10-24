@@ -1,18 +1,11 @@
 import Link from 'next/link';
 import { revalidatePath } from 'next/cache';
+import { ZONES } from '../../../lib/zones';
 import { createClient } from '../../../lib/supabase/server';
 import LabelTags from '../../../components/LabelTags';
 import AddColumn from '../../../components/AddColumn';
 import { CustomInputs, formatValue } from '../../../components/CustomFields';
 import { loadFields, collectCustom } from '../../../lib/custom';
-
-const ZONES = [
-  ['America/New_York', 'US Eastern'], ['America/Chicago', 'US Central'],
-  ['America/Denver', 'US Mountain'], ['America/Los_Angeles', 'US Pacific'],
-  ['Europe/London', 'UK'], ['Australia/Sydney', 'AU Sydney / Melbourne'],
-  ['Australia/Brisbane', 'AU Brisbane'], ['Australia/Adelaide', 'AU Adelaide'],
-  ['Australia/Perth', 'AU Perth'],
-];
 
 export default async function Organizations({ searchParams }) {
   const sp = searchParams || {};

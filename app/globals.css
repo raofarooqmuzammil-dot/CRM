@@ -64,3 +64,5 @@ code{background:#eef0ee;padding:1px 5px;border-radius:4px}
 input.num{width:70px}
 .kv{margin-right:18px;display:inline-block}
 .panel.dup{border-color:#c2410c;background:#fff7f2}
+.panel.notice{border-color:#b7791f;background:#fffaf0}
+.callbtn{display:inline-block;padding:14px 22px;background:var(--accent);color:#fff;border-radius:8px;text-decoration:none;font-size:18px;margin-bottom:16px}

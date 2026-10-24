@@ -1,8 +1,8 @@
 import { addField } from '../app/actions/fields';
 
-export default function AddColumn({ entity }) {
+export default function AddColumn({ entity, open = false }) {
   return (
-    <details className="panel">
+    <details className="panel" id="addcol" open={open}>
       <summary><strong>+ Add column</strong></summary>
       <form className="grid" action={addField}>
         <input type="hidden" name="entity" value={entity} />

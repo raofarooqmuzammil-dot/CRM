@@ -1,25 +1,30 @@
 import Link from 'next/link';
 import { revalidatePath } from 'next/cache';
-import { createClient } from '../../../lib/supabase/server';
-import LocalTime from '../../../components/LocalTime';
-import LabelTags from '../../../components/LabelTags';
-import { ZONES, localTime, zonesInHours } from '../../../lib/zones';
-import { getHours } from '../../../lib/hours';
+import { createClient, getClient, getUser } from '../../../lib/supabase/server';
+import Grid from '../../../components/Grid';
 import AddColumn from '../../../components/AddColumn';
-import { CustomInputs, formatValue } from '../../../components/CustomFields';
+import { CustomInputs } from '../../../components/CustomFields';
+import { ZONES, zonesInHours } from '../../../lib/zones';
+import { getHours } from '../../../lib/hours';
 import { loadFields, collectCustom } from '../../../lib/custom';
+import { resolveOrg } from '../../../lib/orgs';
+import { PAGE_SIZE, personColumns, personRows, pageHref, sortHrefs } from '../../../lib/gridrows';
+
+const SORTS = { name: 'name', phone: 'phone', calls: 'call_count' };
 
 export default async function Persons({ searchParams }) {
   const sp = searchParams || {};
-  const supabase = createClient();
+  const supabase = getClient();
+  const page = Math.max(1, Number(sp.page) || 1);
+  const [cfields, hours, { data: labels }, { data: people }] = await Promise.all([
+    loadFields(supabase, 'person'), getHours(supabase),
+    supabase.from('labels').select('id, name, color').order('name'),
+    supabase.from('profiles').select('id, full_name').order('full_name'),
+  ]);
 
-  const cfields = await loadFields(supabase, 'person');
-  const hours = await getHours(supabase);
-  let query = supabase
-    .from('persons')
-    .select('id, name, phone, email, label_ids, visible_to, do_not_call, call_count, last_outcome, custom, eff_time_zone, organizations(name), owner:profiles!persons_owner_id_fkey(full_name)')
-    .order('created_at', { ascending: false })
-    .limit(200);
+  let query = supabase.from('persons').select(
+    'id, name, phone, email, notes, label_ids, owner_id, time_zone, eff_time_zone, do_not_call, possible_duplicate, custom, call_count, last_outcome, organizations(id, name)',
+    { count: 'exact' });
   const term = String(sp.q || '').replace(/[%,()*]/g, ' ').trim();
   if (term) query = query.or(`name.ilike.%${term}%,phone.ilike.%${term}%,email.ilike.%${term}%`);
   if (sp.label) query = query.contains('label_ids', [sp.label]);
@@ -29,32 +34,39 @@ export default async function Persons({ searchParams }) {
   if (sp.calls === 'none') query = query.eq('call_count', 0);
   if (sp.calls === 'few') query = query.gte('call_count', 1).lte('call_count', 2);
   if (sp.calls === 'many') query = query.gte('call_count', 3);
+  const sortCol = SORTS[sp.sort];
+  query = (sortCol ? query.order(sortCol, { ascending: sp.dir === 'asc', nullsFirst: false }) : query.order('created_at', { ascending: false })).order('id');
+  const from = (page - 1) * PAGE_SIZE;
+  const { data: persons, count } = await query.range(from, from + PAGE_SIZE - 1);
 
-  const [{ data: persons }, { data: orgs }, { data: labels }, { data: people }, { data: upcoming }] = await Promise.all([
-    query,
-    supabase.from('organizations').select('id, name').order('name'),
-    supabase.from('labels').select('id, name, color').order('name'),
-    supabase.from('profiles').select('id, full_name').order('full_name'),
-    supabase.from('activities').select('person_id, due_at').eq('done', false).not('person_id', 'is', null).order('due_at'),
-  ]);
+  const ids = (persons || []).map((p) => p.id);
+  const { data: acts } = ids.length
+    ? await supabase.from('activities').select('person_id, due_at').in('person_id', ids).eq('done', false).order('due_at')
+    : { data: [] };
   const next = new Map();
-  (upcoming || []).forEach((a) => { if (!next.has(a.person_id)) next.set(a.person_id, a.due_at); });
+  (acts || []).forEach((a) => { if (!next.has(a.person_id)) next.set(a.person_id, a.due_at); });
+
+  const columns = personColumns(cfields, people || []);
+  const rows = personRows(persons || [], { cfields, next });
+  const total = count || 0;
   const filtered = Boolean(term || sp.label || sp.owner || sp.calls || sp.dup || sp.calling);
+  const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   async function addPerson(formData) {
     'use server';
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    const { error } = await supabase.from('persons').insert({
+    const s = createClient();
+    const user = await getUser();
+    const orgId = await resolveOrg(s, formData.get('organization_name'), user.id);
+    const { error } = await s.from('persons').insert({
       name: formData.get('name'),
-      organization_id: formData.get('organization_id') || null,
+      organization_id: orgId,
       phone: formData.get('phone') || null,
       email: formData.get('email') || null,
       label_ids: formData.getAll('label_ids'),
       visible_to: formData.get('visible_to'),
       do_not_call: formData.get('do_not_call') === 'on',
       time_zone: formData.get('time_zone') || null,
-      custom: collectCustom(formData, await loadFields(supabase, 'person')),
+      custom: collectCustom(formData, await loadFields(s, 'person')),
       owner_id: user.id,
       created_by: user.id,
     });
@@ -95,10 +107,7 @@ export default async function Persons({ searchParams }) {
         <summary><strong>Add person</strong></summary>
         <form className="grid" action={addPerson}>
           <label>Name<input name="name" required /></label>
-          <label>Organization
-            <select name="organization_id"><option value="">None</option>
-              {orgs?.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}</select>
-          </label>
+          <label>Organization (name)<input name="organization_name" placeholder="Created if it does not exist" /></label>
           <label>Phone<input name="phone" type="tel" /></label>
           <label>Email<input name="email" type="email" /></label>
           <label>Labels
@@ -107,9 +116,7 @@ export default async function Persons({ searchParams }) {
               <div className="menu">
                 {labels?.length
                   ? labels.map((l) => (
-                      <label className="check" key={l.id}>
-                        <input type="checkbox" name="label_ids" value={l.id} /> {l.name}
-                      </label>))
+                      <label className="check" key={l.id}><input type="checkbox" name="label_ids" value={l.id} /> {l.name}</label>))
                   : <span className="muted">No labels yet. Add some in Settings.</span>}
               </div>
             </details>
@@ -127,34 +134,15 @@ export default async function Persons({ searchParams }) {
           <button type="submit">Save person</button>
         </form>
       </details>
-      <AddColumn entity="person" />
-      <section className="panel">
-        <p className="muted">{persons?.length || 0}{persons?.length === 200 ? '+' : ''} {filtered ? 'matching' : ''} persons</p>
-        {persons?.length ? (
-          <table>
-            <thead><tr><th>Name</th><th>Organization</th><th>Phone</th><th>Local time</th><th>Labels</th><th>Calls</th><th>Next follow-up</th><th>Owner</th>{cfields.map((f) => <th key={f.id}>{f.name}</th>)}</tr></thead>
-            <tbody>
-              {persons.map((p) => (
-                <tr key={p.id}>
-                  <td>
-                    <Link href={`/persons/${p.id}`}>{p.name}</Link>{' '}
-                    {p.visible_to === 'private' && <span className="tag">Private</span>}
-                    {p.do_not_call && <span className="tag warn">Do not call</span>}
-                  </td>
-                  <td>{p.organizations?.name}</td>
-                  <td>{p.phone && <a href={`tel:${p.phone}`}>{p.phone}</a>}</td>
-                  <td>{localTime(p.eff_time_zone)}</td>
-                  <td><LabelTags ids={p.label_ids} labels={labels} /></td>
-                  <td>{p.call_count}{p.last_outcome && <div className="muted">{p.last_outcome}</div>}</td>
-                  <td>{next.has(p.id) ? <LocalTime iso={next.get(p.id)} /> : <span className="muted">None</span>}</td>
-                  <td>{p.owner?.full_name}</td>
-                  {cfields.map((f) => <td key={f.id}>{formatValue(f, p.custom?.[f.id])}</td>)}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : <p className="empty">{filtered ? 'No persons match these filters.' : 'No persons yet. Add the first one above.'}</p>}
-      </section>
+      <AddColumn entity="person" open={Boolean(sp.addcol)} />
+      <Grid
+        entity="persons" columns={columns} rows={rows} labels={labels || []} storageKey="callcrm-cols:persons"
+        sortHrefs={sortHrefs('/persons', sp, columns)} sort={sortCol ? sp.sort : ''} dir={sp.dir}
+        addHref={pageHref('/persons', sp, { addcol: 1 }) + '#addcol'}
+        total={total} from={total ? from + 1 : 0} to={Math.min(from + PAGE_SIZE, total)}
+        prevHref={page > 1 ? pageHref('/persons', sp, { page: page - 1 }) : null}
+        nextHref={page < lastPage ? pageHref('/persons', sp, { page: page + 1 }) : null}
+      />
     </>
   );
 }

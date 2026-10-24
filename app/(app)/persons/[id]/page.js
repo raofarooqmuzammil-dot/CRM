@@ -1,7 +1,8 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
-import { createClient } from '../../../../lib/supabase/server';
+import { createClient, getClient, getUser } from '../../../../lib/supabase/server';
+import { resolveOrg } from '../../../../lib/orgs';
 import ScheduleForm from '../../../../components/ScheduleForm';
 import LogCall from '../../../../components/LogCall';
 import LocalTime from '../../../../components/LocalTime';
@@ -22,11 +23,11 @@ const fields = (fd) => ({
 });
 
 export default async function PersonPage({ params, searchParams }) {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const supabase = getClient();
+  const user = await getUser();
   const { data: person } = await supabase
     .from('persons')
-    .select('id, name, phone, email, label_ids, visible_to, do_not_call, notes, organization_id, owner_id, custom, possible_duplicate, duplicate_of, duplicate_of_org, call_count, last_called_at, last_outcome, last_called_by, time_zone, time_zone_guessed, eff_time_zone, organizations(name, time_zone_guessed), lastcaller:profiles!persons_last_called_by_fkey(full_name), owner:profiles!persons_owner_id_fkey(full_name)')
+    .select('id, name, phone, email, label_ids, visible_to, do_not_call, notes, organization_id, owner_id, custom, possible_duplicate, duplicate_of, duplicate_of_org, call_count, last_called_at, last_outcome, last_called_by, time_zone, time_zone_guessed, eff_time_zone, organizations(id, name, time_zone_guessed), lastcaller:profiles!persons_last_called_by_fkey(full_name), owner:profiles!persons_owner_id_fkey(full_name)')
     .eq('id', params.id).maybeSingle();
   if (!person) notFound();
   const cfields = await loadFields(supabase, 'person');
@@ -41,7 +42,8 @@ export default async function PersonPage({ params, searchParams }) {
     person.duplicate_of_org ? supabase.from('organizations').select('id, name').eq('id', person.duplicate_of_org).maybeSingle() : { data: null },
   ]);
 
-  const [{ data: me }, { data: labels }, { data: acts }, { data: calls }, { data: types }, { data: outcomes }, { data: orgs }, { data: people }] = await Promise.all([
+  const [{ data: me }, { data: labels }, { data: acts }, { data: calls }, { data: types }, { data: outcomes }, { data: people }] = await Promise.all([
+
     supabase.from('profiles').select('role').eq('id', user.id).single(),
     supabase.from('labels').select('id, name, color').order('name'),
     supabase.from('activities')
@@ -52,7 +54,6 @@ export default async function PersonPage({ params, searchParams }) {
       .eq('person_id', person.id).order('called_at', { ascending: false }),
     supabase.from('activity_types').select('id, name').order('sort').order('created_at'),
     supabase.from('call_outcomes').select('id, name').order('sort').order('created_at'),
-    supabase.from('organizations').select('id, name').order('name'),
     supabase.from('profiles').select('id, full_name').order('full_name'),
   ]);
   const isAdmin = me?.role === 'admin';
@@ -113,12 +114,14 @@ export default async function PersonPage({ params, searchParams }) {
     'use server';
     const s = createClient();
     const fl = await loadFields(s, 'person');
-    const { data: cur } = await s.from('persons').select('custom, time_zone, time_zone_guessed').eq('id', params.id).single();
+    const { data: cur } = await s.from('persons').select('custom, time_zone, time_zone_guessed, organization_id, organizations(name)').eq('id', params.id).single();
+    const typed = String(fd.get('organization_name') || '').trim();
+    const orgId = !typed ? null : typed.toLowerCase() === (cur?.organizations?.name || '').toLowerCase() ? cur.organization_id : await resolveOrg(s, typed, (await getUser()).id);
     const { error } = await s.from('persons').update({
       custom: collectCustom(fd, fl, cur?.custom || {}),
       time_zone: fd.get('time_zone') || null,
       time_zone_guessed: (fd.get('time_zone') || null) === cur?.time_zone ? Boolean(cur?.time_zone_guessed) : false,
-      name: fd.get('name'), organization_id: fd.get('organization_id') || null,
+      name: fd.get('name'), organization_id: orgId,
       phone: fd.get('phone') || null, email: fd.get('email') || null,
       label_ids: fd.getAll('label_ids'), visible_to: fd.get('visible_to'),
       owner_id: fd.get('owner_id') || null, do_not_call: fd.get('do_not_call') === 'on',
@@ -259,10 +262,7 @@ export default async function PersonPage({ params, searchParams }) {
         <summary><strong>Edit person</strong></summary>
         <form className="grid" action={updatePerson}>
           <label>Name<input name="name" defaultValue={person.name} required /></label>
-          <label>Organization
-            <select name="organization_id" defaultValue={person.organization_id || ''}><option value="">None</option>
-              {orgs?.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}</select>
-          </label>
+          <label>Organization (name)<input name="organization_name" defaultValue={person.organizations?.name || ''} /></label>
           <label>Phone<input name="phone" type="tel" defaultValue={person.phone || ''} /></label>
           <label>Email<input name="email" type="email" defaultValue={person.email || ''} /></label>
           <label>Labels

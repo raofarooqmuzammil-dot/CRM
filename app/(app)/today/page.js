@@ -1,10 +1,10 @@
 import { revalidatePath } from 'next/cache';
-import { createClient } from '../../../lib/supabase/server';
+import { createClient, getClient, getUser } from '../../../lib/supabase/server';
 import Agenda from '../../../components/Agenda';
 
 export default async function Today() {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const supabase = getClient();
+  const user = await getUser();
   const { data: items } = await supabase
     .from('activities')
     .select('id, title, type, due_at, description, person:persons(id, name, phone, organizations(name))')

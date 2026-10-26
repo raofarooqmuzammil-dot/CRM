@@ -97,3 +97,11 @@ input.num{width:70px}
 .cell-labels .menu{position:absolute;z-index:5;left:0;top:100%;background:#fff;border:1px solid var(--line);border-radius:6px;padding:8px 12px;display:grid;gap:6px;min-width:160px}
 .cell-labels .menu label.check{padding:0;color:var(--ink);font-size:14px}
 .pager{display:flex;gap:16px;margin-top:10px}
+.withpick{display:flex;align-items:center}
+.withpick .cell{flex:1}
+.rowpick{margin-left:8px}
+.bulkbar{display:inline-flex;gap:8px;align-items:center;background:#eef6f3;border:1px solid var(--line);border-radius:6px;padding:4px 8px}
+.bulkbar select{padding:3px 6px}
+.bulkbar button{padding:4px 10px}
+.tabs a .count{opacity:.65;margin-left:6px}
+.col.hot{border-top:3px solid var(--accent);background:#e3f0ec}

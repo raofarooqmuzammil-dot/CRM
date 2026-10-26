@@ -30,10 +30,12 @@ export default function Agenda({ items, markDone }) {
               <td className="when"><LocalTime iso={i.due_at} /></td>
               <td>{i.title}{i.description && <div className="muted">{i.description}</div>}</td>
               <td>
-                {i.person && <Link href={`/persons/${i.person.id}`}>{i.person.name}</Link>}
-                {i.person?.organizations?.name && <div className="muted">{i.person.organizations.name}</div>}
+                {i.person
+                  ? <Link href={`/persons/${i.person.id}`}>{i.person.name}</Link>
+                  : i.org && <Link href={`/organizations/${i.org.id}`}>{i.org.name}</Link>}
+                {(i.person?.organizations?.name || (i.person && i.org?.name)) && <div className="muted">{i.person?.organizations?.name || i.org?.name}</div>}
               </td>
-              <td>{i.person?.phone && <a href={`tel:${i.person.phone}`}>{i.person.phone}</a>}</td>
+              <td>{(i.person?.phone || i.org?.phone) && <a href={`tel:${i.person?.phone || i.org.phone}`}>{i.person?.phone || i.org.phone}</a>}</td>
               <td>
                 <form action={markDone}>
                   <input type="hidden" name="id" value={i.id} />

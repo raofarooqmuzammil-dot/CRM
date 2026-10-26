@@ -3,7 +3,7 @@ import { useState } from 'react';
 
 const local = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 
-export default function LogCall({ action, personId, outcomes, hint }) {
+export default function LogCall({ action, personId, outcomes, hint, contacts }) {
   const [outcome, setOutcome] = useState('');
   const [when, setWhen] = useState('');
   const preset = (days) => {
@@ -14,7 +14,7 @@ export default function LogCall({ action, personId, outcomes, hint }) {
   };
   return (
     <form action={async (fd) => { await action(fd); setOutcome(''); setWhen(''); }}>
-      <input type="hidden" name="person_id" value={personId} />
+      {personId && <input type="hidden" name="person_id" value={personId} />}
       <input type="hidden" name="outcome" value={outcome} />
       <input type="hidden" name="next_at" value={when ? new Date(when).toISOString() : ''} />
       <div className="outcomes">
@@ -24,6 +24,13 @@ export default function LogCall({ action, personId, outcomes, hint }) {
         ))}
       </div>
       <div className="grid">
+        {contacts && (
+          <label>Spoke with (contact)
+            <select name="contact_id"><option value="">The organization (front desk)</option>
+              {contacts.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
+          </label>
+        )}
+        {contacts && <label>Ask for / name (free text)<input name="spoke_with" placeholder="Dana, front desk" /></label>}
         <label>Note<input name="note" /></label>
         <label>Next follow-up (optional)
           <input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} />

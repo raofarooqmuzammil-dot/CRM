@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import LocalTime from './LocalTime';
-import { updateCell } from '../app/actions/grid';
+import { updateCell, moveToList } from '../app/actions/grid';
 
 const INPUT = { text: 'text', number: 'number', date: 'date', link: 'text' };
 
@@ -74,11 +74,14 @@ function LabelsCell({ ids, labels, onCommit }) {
   );
 }
 
-export default function Grid({ entity, columns, rows, labels, storageKey, sortHrefs, sort, dir, addHref, total, from, to, prevHref, nextHref }) {
+export default function Grid({ entity, columns, rows, labels, lists, storageKey, sortHrefs, sort, dir, addHref, total, from, to, prevHref, nextHref }) {
   const [data, setData] = useState(rows);
   const [status, setStatus] = useState({});
+  const [sel, setSel] = useState([]);
+  const [target, setTarget] = useState('');
+  const [bulkMsg, setBulkMsg] = useState('');
   const [hidden, setHidden] = useState(() => columns.filter((c) => c.defaultHidden).map((c) => c.key));
-  useEffect(() => setData(rows), [rows]);
+  useEffect(() => { setData(rows); setSel([]); }, [rows]);
   useEffect(() => {
     try { const s = JSON.parse(localStorage.getItem(storageKey) || 'null'); if (Array.isArray(s)) setHidden(s); } catch {}
   }, [storageKey]);
@@ -107,10 +110,23 @@ export default function Grid({ entity, columns, rows, labels, storageKey, sortHr
     }
   };
 
+  const bulkMove = async () => {
+    setBulkMsg('Moving...');
+    const res = await moveToList({ ids: sel, listId: target });
+    if (res.ok) {
+      setData((d) => d.map((r) => (sel.includes(r.id) ? { ...r, cells: { ...r.cells, list: target } } : r)));
+      setBulkMsg(`Moved ${res.moved} to ${target ? lists.find((l) => l.id === target)?.name : 'no list'}`);
+      setSel([]);
+    } else setBulkMsg(res.error);
+  };
   const labelFor = (col) => (v) => (col.options.find(([x]) => x === (v ?? ''))?.[1]) ?? v ?? '';
 
   const render = (row, col) => {
     const v = row.cells[col.key];
+    const pick = lists && col.key === 'name'
+      ? <input type="checkbox" className="rowpick" aria-label="Select row" checked={sel.includes(row.id)}
+          onChange={(e) => setSel((x) => (e.target.checked ? [...x, row.id] : x.filter((i) => i !== row.id)))} />
+      : null;
     const st = status[row.id + col.key];
     switch (col.type) {
       case 'ro-link': return <div className="ro">{v ? <Link href={v.href}>{v.text}</Link> : ''}</div>;
@@ -121,8 +137,8 @@ export default function Grid({ entity, columns, rows, labels, storageKey, sortHr
       case 'boolean':
         return <div className="cell"><input type="checkbox" checked={Boolean(v)} onChange={(e) => commit(row, col, e.target.checked)} /></div>;
       default:
-        return <EditableCell col={col} value={v} row={row} status={st} labelFor={col.type === 'select' ? labelFor(col) : undefined}
-          onCommit={(x) => commit(row, col, x)} />;
+        return <div className="withpick">{pick}<EditableCell col={col} value={v} row={row} status={st} labelFor={col.type === 'select' ? labelFor(col) : undefined}
+          onCommit={(x) => commit(row, col, x)} /></div>;
     }
   };
 
@@ -139,6 +155,18 @@ export default function Grid({ entity, columns, rows, labels, storageKey, sortHr
             ))}
           </div>
         </details>
+        {sel.length > 0 && lists && (
+          <span className="bulkbar">
+            {sel.length} selected. Move to
+            <select value={target} onChange={(e) => setTarget(e.target.value)} aria-label="List">
+              <option value="">No list</option>
+              {lists.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+            </select>
+            <button type="button" onClick={bulkMove}>Move</button>
+            <button type="button" className="ghost" onClick={() => setSel([])}>Clear</button>
+          </span>
+        )}
+        {bulkMsg && <span className="muted">{bulkMsg}</span>}
         <span className="muted">{total ? `Showing ${from}–${to} of ${total}` : 'No results'}</span>
       </div>
       <div className="gridwrap">

@@ -4,7 +4,7 @@ import { ZONES } from '../../lib/zones';
 
 const FIELDS = {
   persons: ['name', 'phone', 'email', 'notes', 'owner_id', 'time_zone', 'label_ids'],
-  organizations: ['name', 'phone', 'website', 'address', 'country', 'time_zone', 'owner_id', 'label_ids'],
+  organizations: ['name', 'phone', 'email', 'website', 'address', 'country', 'time_zone', 'owner_id', 'label_ids', 'list_id'],
 };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const text = (v) => { const t = String(v ?? '').trim(); return t || null; };
@@ -12,6 +12,7 @@ const text = (v) => { const t = String(v ?? '').trim(); return t || null; };
 function builtIn(entity, field, value) {
   if (field === 'name') { const t = text(value); if (!t) throw new Error('Name cannot be empty'); return { name: t }; }
   if (field === 'email') { const t = text(value); if (t && !t.includes('@')) throw new Error('That does not look like an email'); return { email: t }; }
+  if (field === 'list_id') { const t = text(value); if (t && !UUID.test(t)) throw new Error('Unknown list'); return { list_id: t }; }
   if (field === 'owner_id') { const t = text(value); if (t && !UUID.test(t)) throw new Error('Unknown owner'); return { owner_id: t }; }
   if (field === 'country') { const t = text(value); if (t && !['US', 'UK', 'AU'].includes(t)) throw new Error('Unknown country'); return { country: t }; }
   if (field === 'time_zone') {
@@ -59,5 +60,19 @@ export async function updateCell({ entity, id, field, value }) {
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e.message || 'Could not save' };
+  }
+}
+
+// Moves several organizations to one list (or to no list).
+export async function moveToList({ ids, listId }) {
+  try {
+    if (!Array.isArray(ids) || !ids.length || ids.length > 500 || ids.some((x) => !UUID.test(x))) throw new Error('Pick up to 500 organizations');
+    const list = text(listId);
+    if (list && !UUID.test(list)) throw new Error('Unknown list');
+    const { data, error } = await createClient().from('organizations').update({ list_id: list }).in('id', ids).select('id');
+    if (error) throw new Error(error.message);
+    return { ok: true, moved: data?.length || 0 };
+  } catch (e) {
+    return { ok: false, error: e.message || 'Could not move' };
   }
 }

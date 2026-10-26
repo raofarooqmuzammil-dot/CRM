@@ -7,7 +7,7 @@ export default async function Today() {
   const user = await getUser();
   const { data: items } = await supabase
     .from('activities')
-    .select('id, title, type, due_at, description, person:persons(id, name, phone, organizations(name))')
+    .select('id, title, type, due_at, description, person:persons(id, name, phone, organizations(name)), org:organizations(id, name, phone)')
     .eq('assigned_to', user.id)
     .eq('done', false)
     .order('due_at');

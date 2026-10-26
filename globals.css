@@ -104,3 +104,4 @@ input.num{width:70px}
 .bulkbar select{padding:3px 6px}
 .bulkbar button{padding:4px 10px}
 .tabs a .count{opacity:.65;margin-left:6px}
+.col.hot{border-top:3px solid var(--accent);background:#e3f0ec}

@@ -5,6 +5,7 @@ import { createClient } from '../../../lib/supabase/server';
 
 const LISTS = [
   { table: 'lists', title: 'Lists (industries)', colored: true, note: 'One list per organization, like NEMT, Roofers, or HVAC. They become tabs on the Organizations page.' },
+  { table: 'contact_roles', title: 'Contact roles', colored: false, note: 'Who you can say you spoke to: Front desk, Owner, Manager, CEO, and anything you add.' },
   { table: 'labels', title: 'Labels', colored: true, note: 'Tags you can put on persons, like Hot or Warm.' },
   { table: 'activity_types', title: 'Activity types', colored: false, note: 'What is planned: Call, Follow-up, Meeting, Demo, and anything you add.' },
   { table: 'lost_reasons', title: 'Lost reasons', colored: false, note: 'Why a deal was lost. Shown when you mark a deal lost.' },

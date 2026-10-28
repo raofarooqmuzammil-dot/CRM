@@ -1,15 +1,15 @@
 import Link from 'next/link';
 import { getClient, getUser } from '../../../lib/supabase/server';
-import LocalTime from '../../../components/LocalTime';
+import ResultsBoard from '../../../components/ResultsBoard';
 import { localTime } from '../../../lib/zones';
 import { loadBoard } from '../../../lib/results';
 import { pageHref } from '../../../lib/gridrows';
-import { createDealFromOrg } from '../../actions/results';
 
 const rel = (iso) => {
   const m = Math.round((Date.now() - new Date(iso)) / 60000);
-  return m < 1 ? 'just now' : m < 60 ? `${m} minutes ago` : m < 1440 ? `${Math.round(m / 60)} hours ago` : `${Math.round(m / 1440)} days ago`;
+  return m < 1 ? 'just now' : m < 60 ? `${m}m ago` : m < 1440 ? `${Math.round(m / 60)}h ago` : `${Math.round(m / 1440)}d ago`;
 };
+const ORDERS = [['recent', 'Recently called'], ['oldest', 'Called longest ago'], ['name', 'Name A to Z'], ['calls', 'Most calls']];
 
 export default async function Results({ searchParams }) {
   const sp = searchParams || {};
@@ -17,6 +17,7 @@ export default async function Results({ searchParams }) {
   const user = await getUser();
   const owner = sp.owner === 'mine' ? user.id : sp.owner || '';
   const since = sp.window === '7' || sp.window === '30' ? new Date(Date.now() - Number(sp.window) * 86400000).toISOString() : '';
+  const order = ORDERS.some(([k]) => k === sp.order) ? sp.order : 'recent';
 
   const [{ data: outcomes }, { data: lists }, { data: people }, { data: pipes }] = await Promise.all([
     supabase.from('call_outcomes').select('id, name').order('sort').order('created_at'),
@@ -24,7 +25,7 @@ export default async function Results({ searchParams }) {
     supabase.from('profiles').select('id, full_name').order('full_name'),
     supabase.from('pipelines').select('id').limit(1),
   ]);
-  const board = await loadBoard(supabase, { list: sp.list || '', owner, since, outcomes: outcomes || [] });
+  const board = await loadBoard(supabase, { list: sp.list || '', owner, since, order, outcomes: outcomes || [] });
 
   const ids = board.flatMap((c) => c.rows.map((r) => r.id));
   const [{ data: acts }, { data: deals }] = ids.length
@@ -37,12 +38,20 @@ export default async function Results({ searchParams }) {
   const dealOf = new Map((deals || []).map((d) => [d.organization_id, d.id]));
   const listOf = new Map((lists || []).map((l) => [l.id, l]));
   const nameOf = new Map((people || []).map((p) => [p.id, p.full_name]));
-  const mine = sp.owner === 'mine';
+
+  const columns = board.map((c) => ({
+    key: c.key, name: c.name, count: c.count, hot: c.name.trim().toLowerCase() === 'interested',
+    viewAllHref: c.viewAll ? pageHref('/organizations', { list: sp.list, owner: sp.owner === 'mine' ? '' : owner, last: c.viewAll }, {}) : null,
+    cards: c.rows.map((o) => ({
+      id: o.id, name: o.name, phone: o.phone || '', localTime: localTime(o.time_zone), list: listOf.get(o.list_id) || null,
+      calledText: o.last_called_at ? `${rel(o.last_called_at)}${nameOf.get(o.last_called_by) ? ` by ${nameOf.get(o.last_called_by)}` : ''}` : 'Not called',
+      calls: o.call_count || 0, followup: next.get(o.id) || null, dealId: dealOf.get(o.id) || null,
+    })),
+  }));
 
   return (
     <>
       <h1>Results</h1>
-      <p className="muted">Each column is the latest result for an organization, including calls to its contacts. Logging a new call moves it.</p>
       <section className="panel">
         <form className="grid" method="get">
           <label>List
@@ -57,45 +66,14 @@ export default async function Results({ searchParams }) {
             <select name="window" defaultValue={sp.window || ''}><option value="">Any time</option>
               <option value="7">In the last 7 days</option><option value="30">In the last 30 days</option></select>
           </label>
+          <label>Sort cards
+            <select name="order" defaultValue={order}>{ORDERS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
+          </label>
           <button type="submit">Apply</button>
-          {(sp.list || sp.owner || sp.window) && <Link href="/results">Clear</Link>}
+          {(sp.list || sp.owner || sp.window || sp.order) && <Link href="/results">Clear</Link>}
         </form>
       </section>
-      <div className="board">
-        {board.map((c) => {
-          const hot = c.name.trim().toLowerCase() === 'interested';
-          return (
-            <section className={'col' + (hot ? ' hot' : '')} key={c.key}>
-              <h2>{c.name} ({c.count})</h2>
-              {c.viewAll && c.count > c.rows.length && (
-                <p className="muted"><Link href={pageHref('/organizations', { list: sp.list, owner: mine ? '' : owner, last: c.viewAll }, {})}>View all {c.count}</Link></p>
-              )}
-              {c.rows.map((o) => {
-                const list = listOf.get(o.list_id);
-                return (
-                  <article className="card" key={o.id}>
-                    <Link href={`/organizations/${o.id}`}><strong>{o.name}</strong></Link>
-                    <div>{o.phone && <a href={`tel:${o.phone}`}>{o.phone}</a>}{o.time_zone && <span className="muted"> · {localTime(o.time_zone)}</span>}</div>
-                    {list && <div><span className="tag" style={{ background: list.color + '26', color: list.color }}>{list.name}</span></div>}
-                    <div className="muted">
-                      {o.last_called_at ? `Called ${rel(o.last_called_at)}${nameOf.get(o.last_called_by) ? ` by ${nameOf.get(o.last_called_by)}` : ''}` : 'Not called yet'}
-                      {o.call_count > 0 && ` · ${o.call_count} calls`}
-                    </div>
-                    {next.get(o.id) && <div className="muted">Follow-up: <LocalTime iso={next.get(o.id)} /></div>}
-                    {hot && (dealOf.get(o.id)
-                      ? <Link href={`/deals/${dealOf.get(o.id)}`}>View deal</Link>
-                      : pipes?.length ? (
-                        <form action={createDealFromOrg}><input type="hidden" name="id" value={o.id} />
-                          <button className="ghost" type="submit">Create deal</button></form>
-                      ) : null)}
-                  </article>
-                );
-              })}
-              {!c.rows.length && <p className="muted">Nothing here</p>}
-            </section>
-          );
-        })}
-      </div>
+      <ResultsBoard columns={columns} hasPipeline={Boolean(pipes?.length)} />
     </>
   );
 }

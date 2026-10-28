@@ -193,13 +193,6 @@ export default async function PersonPage({ params, searchParams }) {
       </section>
 
       <section className="panel">
-        <h2>Schedule a follow-up</h2>
-        {person.do_not_call
-          ? <p className="muted">Scheduling is off because this person is marked Do not call.</p>
-          : <ScheduleForm action={schedule} personId={person.id} types={types || []} />}
-      </section>
-
-      <section className="panel">
         <h2>Planned ({open.length})</h2>
         {open.length ? (
           <table><tbody>
@@ -226,6 +219,12 @@ export default async function PersonPage({ params, searchParams }) {
             ))}
           </tbody></table>
         ) : <p className="empty">Nothing planned for this person.</p>}
+        <details>
+          <summary>+ Add task, meeting or demo</summary>
+          {person.do_not_call
+            ? <p className="muted">Scheduling is off because this person is marked Do not call.</p>
+            : <ScheduleForm action={schedule} personId={person.id} types={types || []} defaultTitle="Meeting" defaultType="Meeting" />}
+        </details>
       </section>
 
       <section className="panel">

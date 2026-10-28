@@ -3,9 +3,11 @@ import { useState } from 'react';
 
 const local = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 
-export default function LogCall({ action, personId, outcomes, hint, contacts }) {
+// `contacts` and `roles` turn on the "Who did you speak to?" question (used on an organization).
+export default function LogCall({ action, personId, outcomes, hint, contacts, roles }) {
   const [outcome, setOutcome] = useState('');
   const [when, setWhen] = useState('');
+  const [who, setWho] = useState('');
   const preset = (days) => {
     const d = new Date();
     d.setDate(d.getDate() + days);
@@ -13,9 +15,10 @@ export default function LogCall({ action, personId, outcomes, hint, contacts }) 
     setWhen(local(d));
   };
   return (
-    <form action={async (fd) => { await action(fd); setOutcome(''); setWhen(''); }}>
+    <form action={async (fd) => { await action(fd); setOutcome(''); setWhen(''); setWho(''); }}>
       {personId && <input type="hidden" name="person_id" value={personId} />}
       <input type="hidden" name="outcome" value={outcome} />
+      <input type="hidden" name="who" value={who} />
       <input type="hidden" name="next_at" value={when ? new Date(when).toISOString() : ''} />
       <div className="outcomes">
         {outcomes.map((o) => (
@@ -25,12 +28,36 @@ export default function LogCall({ action, personId, outcomes, hint, contacts }) 
       </div>
       <div className="grid">
         {contacts && (
-          <label>Spoke with (contact)
-            <select name="contact_id"><option value="">The organization (front desk)</option>
-              {contacts.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
+          <label>Who did you speak to?
+            <select value={who} onChange={(e) => setWho(e.target.value)}>
+              <option value="">Not sure</option>
+              <optgroup label="Role">
+                {(roles || []).map((r) => <option key={r.id} value={'role:' + r.name}>{r.name}</option>)}
+              </optgroup>
+              {contacts.length > 0 && (
+                <optgroup label="Contacts at this organization">
+                  {contacts.map((c) => <option key={c.id} value={'contact:' + c.id}>{c.name}{c.role ? ` (${c.role})` : ''}</option>)}
+                </optgroup>
+              )}
+              <option value="new">+ New contact...</option>
+            </select>
           </label>
         )}
-        {contacts && <label>Ask for / name (free text)<input name="spoke_with" placeholder="Dana, front desk" /></label>}
+        {contacts && (who === '' || who.startsWith('role:')) && (
+          <label>Name (if you got it)<input name="spoke_name" placeholder="Dana" /></label>
+        )}
+        {contacts && who === 'new' && (
+          <>
+            <label>Contact name<input name="new_name" required /></label>
+            <label>Role
+              <select name="new_role" defaultValue="">
+                <option value="">Not set</option>
+                {(roles || []).map((r) => <option key={r.id} value={r.name}>{r.name}</option>)}
+              </select>
+            </label>
+            <label>Phone<input name="new_phone" type="tel" /></label>
+          </>
+        )}
         <label>Note<input name="note" /></label>
         <label>Next follow-up (optional)
           <input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} />

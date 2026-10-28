@@ -7,9 +7,7 @@ import { CustomInputs } from '../../../components/CustomFields';
 import { ZONES, zonesInHours } from '../../../lib/zones';
 import { getHours } from '../../../lib/hours';
 import { loadFields, collectCustom } from '../../../lib/custom';
-import { PAGE_SIZE, orgColumns, orgRows, pageHref, sortHrefs } from '../../../lib/gridrows';
-
-const SORTS = { name: 'name', country: 'country', calls: 'call_count' };
+import { PAGE_SIZE, SORT_OPTIONS, orgColumns, orgRows, pageHref, sortHrefs, parseSort, applySort } from '../../../lib/gridrows';
 
 export default async function Organizations({ searchParams }) {
   const sp = searchParams || {};
@@ -40,8 +38,8 @@ export default async function Organizations({ searchParams }) {
   if (sp.calls === 'none') query = query.eq('call_count', 0);
   if (sp.calls === 'few') query = query.gte('call_count', 1).lte('call_count', 2);
   if (sp.calls === 'many') query = query.gte('call_count', 3);
-  const sortCol = SORTS[sp.sort];
-  query = (sortCol ? query.order(sortCol, { ascending: sp.dir === 'asc', nullsFirst: false }) : query.order('created_at', { ascending: false })).order('id');
+  query = applySort(query, sp);
+  const cur = parseSort(sp);
   const from = (page - 1) * PAGE_SIZE;
 
   const count = (q) => q.then((r) => r.count || 0);
@@ -130,6 +128,9 @@ export default async function Organizations({ searchParams }) {
           <label>Time
             <select name="calling" defaultValue={sp.calling || ''}><option value="">Any</option><option value="1">Calling now ({hours.start}:00 to {hours.end}:00 local)</option></select>
           </label>
+          <label>Sort by
+            <select name="s" defaultValue={sp.s || 'created-desc'}>{SORT_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+          </label>
           <button type="submit">Filter</button>
           {filtered && <Link href={pageHref('/organizations', { list: sp.list }, {})}>Clear filters</Link>}
         </form>
@@ -176,7 +177,7 @@ export default async function Organizations({ searchParams }) {
       <Grid
         entity="organizations" columns={columns} rows={rows} labels={labels || []} lists={lists || []}
         storageKey="callcrm-cols:organizations"
-        sortHrefs={sortHrefs('/organizations', sp, columns)} sort={sortCol ? sp.sort : ''} dir={sp.dir}
+        sortHrefs={sortHrefs('/organizations', sp, columns)} sort={cur.key} dir={cur.dir}
         addHref={pageHref('/organizations', sp, { addcol: 1 }) + '#addcol'}
         total={total || 0} from={total ? from + 1 : 0} to={Math.min(from + PAGE_SIZE, total || 0)}
         prevHref={page > 1 ? pageHref('/organizations', sp, { page: page - 1 }) : null}

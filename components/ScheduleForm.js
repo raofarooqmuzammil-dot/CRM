@@ -4,7 +4,7 @@ import { useState } from 'react';
 const local = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 
 // Used to schedule a new activity, or to edit one (pass `initial`).
-export default function ScheduleForm({ action, personId, orgId, types, initial, submitLabel = 'Schedule' }) {
+export default function ScheduleForm({ action, personId, orgId, types, initial, submitLabel = 'Schedule', defaultTitle, defaultType }) {
   const [when, setWhen] = useState(initial ? local(new Date(initial.due_at)) : '');
   const preset = (days) => {
     const d = new Date();
@@ -20,9 +20,9 @@ export default function ScheduleForm({ action, personId, orgId, types, initial, 
       {personId && <input type="hidden" name="person_id" value={personId} />}
       {orgId && <input type="hidden" name="organization_id" value={orgId} />}
       <input type="hidden" name="due_at" value={when ? new Date(when).toISOString() : ''} />
-      <label>What<input name="title" defaultValue={initial?.title ?? 'Follow-up call'} required /></label>
+      <label>What<input name="title" defaultValue={initial?.title ?? defaultTitle ?? 'Follow-up call'} required /></label>
       <label>Type
-        <select name="type" defaultValue={initial?.type ?? names[0]}>
+        <select name="type" defaultValue={initial?.type ?? (names.includes(defaultType) ? defaultType : names[0])}>
           {names.map((n) => <option key={n} value={n}>{n}</option>)}
         </select>
       </label>

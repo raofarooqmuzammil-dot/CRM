@@ -3,7 +3,7 @@ import { createClient } from '../../lib/supabase/server';
 import { ZONES } from '../../lib/zones';
 
 const FIELDS = {
-  persons: ['name', 'phone', 'email', 'notes', 'owner_id', 'time_zone', 'label_ids'],
+  persons: ['name', 'phone', 'email', 'notes', 'role', 'owner_id', 'time_zone', 'label_ids'],
   organizations: ['name', 'phone', 'email', 'website', 'address', 'country', 'time_zone', 'owner_id', 'label_ids', 'list_id'],
 };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

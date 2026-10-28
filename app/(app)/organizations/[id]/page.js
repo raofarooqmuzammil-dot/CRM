@@ -8,6 +8,7 @@ import LocalTime from '../../../../components/LocalTime';
 import LabelTags from '../../../../components/LabelTags';
 import { CustomInputs, CustomValues } from '../../../../components/CustomFields';
 import { loadFields, collectCustom } from '../../../../lib/custom';
+import { parseWho } from '../../../../lib/who';
 import { getHours } from '../../../../lib/hours';
 import { ZONES, localTime, inHours, zoneLabel } from '../../../../lib/zones';
 
@@ -26,22 +27,23 @@ export default async function OrganizationPage({ params, searchParams }) {
   const supabase = getClient();
   const user = await getUser();
   const [{ data: org }, { data: me }, { data: labels }, { data: people }, { data: lists }, { data: contacts },
-    { data: acts }, { data: calls }, { data: types }, { data: outcomes }, hours, cfields] = await Promise.all([
+    { data: acts }, { data: calls }, { data: types }, { data: outcomes }, hours, cfields, { data: roles }] = await Promise.all([
     supabase.from('organizations').select('*').eq('id', params.id).maybeSingle(),
     supabase.from('profiles').select('role').eq('id', user.id).single(),
     supabase.from('labels').select('id, name, color').order('name'),
     supabase.from('profiles').select('id, full_name').order('full_name'),
     supabase.from('lists').select('id, name, color').order('name'),
-    supabase.from('persons').select('id, name, phone, email, call_count, last_outcome, do_not_call').eq('organization_id', params.id).order('name'),
+    supabase.from('persons').select('id, name, role, phone, email, call_count, last_outcome, do_not_call').eq('organization_id', params.id).order('name'),
     supabase.from('activities')
       .select('id, title, type, due_at, done, description, location, video_call, assigned_to, person:persons(id, name), assignee:profiles!activities_assigned_to_fkey(full_name)')
       .eq('organization_id', params.id).order('due_at'),
     supabase.from('call_logs')
-      .select('id, outcome, note, spoke_with, called_at, person:persons(id, name), caller:profiles!call_logs_created_by_fkey(full_name)')
+      .select('id, outcome, note, spoke_with, called_at, person:persons(id, name, role), caller:profiles!call_logs_created_by_fkey(full_name)')
       .eq('organization_id', params.id).order('called_at', { ascending: false }),
     supabase.from('activity_types').select('id, name').order('sort').order('created_at'),
     supabase.from('call_outcomes').select('id, name').order('sort').order('created_at'),
     getHours(supabase), loadFields(supabase, 'organization'),
+    supabase.from('contact_roles').select('id, name').order('sort').order('created_at'),
   ]);
   if (!org) notFound();
 
@@ -85,8 +87,18 @@ export default async function OrganizationPage({ params, searchParams }) {
     'use server';
     const s = createClient();
     const u = await getUser();
-    const contactId = fd.get('contact_id') || null;
-    const askFor = String(fd.get('spoke_with') || '').trim() || null;
+    const who = parseWho((k) => fd.get(k));
+    let contactId = who.contactId;
+    let askFor = who.spokeWith;
+    if (who.newContact) {
+      const { data: made, error: pe } = await s.from('persons').insert({
+        name: who.newContact.name, role: who.newContact.role, phone: who.newContact.phone,
+        organization_id: params.id, owner_id: u.id, created_by: u.id,
+      }).select('id').single();
+      if (pe) throw new Error(pe.message);
+      contactId = made.id;
+      askFor = who.newContact.name;
+    }
     const { error } = await s.from('call_logs').insert({
       organization_id: params.id, person_id: contactId, outcome: fd.get('outcome'),
       note: fd.get('note') || null, spoke_with: askFor, created_by: u.id,
@@ -110,7 +122,7 @@ export default async function OrganizationPage({ params, searchParams }) {
     'use server';
     const u = await getUser();
     const { error } = await createClient().from('persons').insert({
-      name: fd.get('name'), phone: fd.get('phone') || null, email: fd.get('email') || null,
+      name: fd.get('name'), role: fd.get('role') || null, phone: fd.get('phone') || null, email: fd.get('email') || null,
       organization_id: params.id, owner_id: u.id, created_by: u.id,
     });
     if (error) throw new Error(error.message);
@@ -210,14 +222,7 @@ export default async function OrganizationPage({ params, searchParams }) {
         <h2>Log a call</h2>
         {org.do_not_call
           ? <p className="muted">Calling is off because this organization is marked Do not call.</p>
-          : <LogCall action={logCall} outcomes={outcomes || []} hint={hint} contacts={contacts || []} />}
-      </section>
-
-      <section className="panel">
-        <h2>Schedule a follow-up</h2>
-        {org.do_not_call
-          ? <p className="muted">Scheduling is off because this organization is marked Do not call.</p>
-          : <ScheduleForm action={schedule} orgId={org.id} types={types || []} />}
+          : <LogCall action={logCall} outcomes={outcomes || []} hint={hint} contacts={contacts || []} roles={roles || []} />}
       </section>
 
       <section className="panel">
@@ -244,6 +249,12 @@ export default async function OrganizationPage({ params, searchParams }) {
             ))}
           </tbody></table>
         ) : <p className="empty">Nothing planned for this organization.</p>}
+        <details>
+          <summary>+ Add task, meeting or demo</summary>
+          {org.do_not_call
+            ? <p className="muted">Scheduling is off because this organization is marked Do not call.</p>
+            : <ScheduleForm action={schedule} orgId={org.id} types={types || []} defaultTitle="Meeting" defaultType="Meeting" />}
+        </details>
       </section>
 
       <section className="panel">
@@ -252,7 +263,7 @@ export default async function OrganizationPage({ params, searchParams }) {
           <table><tbody>
             {contacts.map((c) => (
               <tr key={c.id}>
-                <td><Link href={`/persons/${c.id}`}>{c.name}</Link>{c.do_not_call && <span className="tag warn">Do not call</span>}</td>
+                <td><Link href={`/persons/${c.id}`}>{c.name}</Link>{c.role && <span className="muted"> ({c.role})</span>}{c.do_not_call && <span className="tag warn">Do not call</span>}</td>
                 <td>{c.phone && <a href={`tel:${c.phone}`}>{c.phone}</a>}</td>
                 <td>{c.email}</td>
                 <td className="muted">{c.call_count} calls{c.last_outcome && ` · ${c.last_outcome}`}</td>
@@ -264,6 +275,10 @@ export default async function OrganizationPage({ params, searchParams }) {
           <summary>Add contact</summary>
           <form className="grid" action={addContact}>
             <label>Name<input name="name" required /></label>
+            <label>Role
+              <select name="role" defaultValue=""><option value="">Not set</option>
+                {roles?.map((r) => <option key={r.id} value={r.name}>{r.name}</option>)}</select>
+            </label>
             <label>Phone<input name="phone" type="tel" /></label>
             <label>Email<input name="email" type="email" /></label>
             <button type="submit">Add contact</button>
@@ -279,8 +294,8 @@ export default async function OrganizationPage({ params, searchParams }) {
               <tr key={c.id}>
                 <td className="when"><LocalTime iso={c.called_at} /></td>
                 <td>
-                  {c.person ? <>Contact <Link href={`/persons/${c.person.id}`}>{c.person.name}</Link>: </> : c.spoke_with ? `${c.spoke_with}: ` : 'Organization: '}
-                  {c.outcome}{c.person && c.spoke_with && ` (${c.spoke_with})`}
+                  {c.person ? <>{c.person.role ? `${c.person.role} ` : 'Contact '}<Link href={`/persons/${c.person.id}`}>{c.person.name}</Link>: </> : c.spoke_with ? `${c.spoke_with}: ` : 'Organization: '}
+                  {c.outcome}
                   {c.note && <div className="muted">{c.note}</div>}
                 </td>
                 <td className="muted">{c.caller?.full_name}</td>

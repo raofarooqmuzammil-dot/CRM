@@ -8,25 +8,28 @@ import { ZONES, zonesInHours } from '../../../lib/zones';
 import { getHours } from '../../../lib/hours';
 import { loadFields, collectCustom } from '../../../lib/custom';
 import { resolveOrg } from '../../../lib/orgs';
-import { PAGE_SIZE, SORT_OPTIONS, personColumns, personRows, pageHref, sortHrefs, parseSort, applySort } from '../../../lib/gridrows';
+import { pageSize, cleanSp, SORT_OPTIONS, personColumns, personRows, pageHref, sortHrefs, parseSort, applySort } from '../../../lib/gridrows';
 
 export default async function Persons({ searchParams }) {
   const sp = searchParams || {};
   const supabase = getClient();
   const page = Math.max(1, Number(sp.page) || 1);
-  const [cfields, hours, { data: labels }, { data: people }, { data: roles }] = await Promise.all([
+  const size = pageSize(sp);
+  const [cfields, hours, { data: labels }, { data: people }, { data: roles }, { data: lists }] = await Promise.all([
     loadFields(supabase, 'person'), getHours(supabase),
     supabase.from('labels').select('id, name, color').order('name'),
     supabase.from('profiles').select('id, full_name').order('full_name'),
     supabase.from('contact_roles').select('id, name').order('sort').order('created_at'),
+    supabase.from('lists').select('id, name').order('name'),
   ]);
 
   let query = supabase.from('persons').select(
-    'id, name, role, phone, email, notes, label_ids, owner_id, time_zone, eff_time_zone, do_not_call, possible_duplicate, custom, call_count, last_outcome, organizations(id, name)',
+    'id, name, role, phone, email, notes, label_ids, owner_id, time_zone, eff_time_zone, do_not_call, possible_duplicate, custom, call_count, last_outcome, ' + (sp.list ? 'organizations!inner(id, name)' : 'organizations(id, name)'),
     { count: 'exact' });
   const term = String(sp.q || '').replace(/[%,()*]/g, ' ').trim();
   if (term) query = query.or(`name.ilike.%${term}%,phone.ilike.%${term}%,email.ilike.%${term}%`);
   if (sp.label) query = query.contains('label_ids', [sp.label]);
+  if (sp.list) query = query.eq('organizations.list_id', sp.list);
   if (sp.owner) query = query.eq('owner_id', sp.owner);
   if (sp.calling) { const z = zonesInHours(hours); query = query.in('eff_time_zone', z.length ? z : ['none']); }
   if (sp.dup) query = query.eq('possible_duplicate', true);
@@ -35,8 +38,8 @@ export default async function Persons({ searchParams }) {
   if (sp.calls === 'many') query = query.gte('call_count', 3);
   query = applySort(query, sp);
   const cur = parseSort(sp);
-  const from = (page - 1) * PAGE_SIZE;
-  const { data: persons, count } = await query.range(from, from + PAGE_SIZE - 1);
+  const from = (page - 1) * size;
+  const { data: persons, count } = await query.range(from, from + size - 1);
 
   const ids = (persons || []).map((p) => p.id);
   const { data: acts } = ids.length
@@ -48,8 +51,8 @@ export default async function Persons({ searchParams }) {
   const columns = personColumns(cfields, people || [], roles || []);
   const rows = personRows(persons || [], { cfields, next });
   const total = count || 0;
-  const filtered = Boolean(term || sp.label || sp.owner || sp.calls || sp.dup || sp.calling);
-  const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const filtered = Boolean(term || sp.label || sp.owner || sp.calls || sp.dup || sp.calling || sp.list);
+  const lastPage = Math.max(1, Math.ceil(total / size));
 
   async function addPerson(formData) {
     'use server';
@@ -98,6 +101,10 @@ export default async function Persons({ searchParams }) {
           <label>Time
             <select name="calling" defaultValue={sp.calling || ''}><option value="">Any</option><option value="1">Calling now ({hours.start}:00 to {hours.end}:00 local)</option></select>
           </label>
+          <label>List (industry)
+            <select name="list" defaultValue={sp.list || ''}><option value="">Any</option>
+              {lists?.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}</select>
+          </label>
           <label>Sort by
             <select name="s" defaultValue={sp.s || 'created-desc'}>{SORT_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
           </label>
@@ -141,9 +148,8 @@ export default async function Persons({ searchParams }) {
         entity="persons" columns={columns} rows={rows} labels={labels || []} storageKey="callcrm-cols:persons"
         sortHrefs={sortHrefs('/persons', sp, columns)} sort={cur.key} dir={cur.dir}
         addHref={pageHref('/persons', sp, { addcol: 1 }) + '#addcol'}
-        total={total} from={total ? from + 1 : 0} to={Math.min(from + PAGE_SIZE, total)}
-        prevHref={page > 1 ? pageHref('/persons', sp, { page: page - 1 }) : null}
-        nextHref={page < lastPage ? pageHref('/persons', sp, { page: page + 1 }) : null}
+        total={total} from={total ? from + 1 : 0} to={Math.min(from + size, total)}
+        pager={{ path: '/persons', sp: cleanSp(sp), page, lastPage, total: total || 0, size }}
       />
     </>
   );

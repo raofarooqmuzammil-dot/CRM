@@ -2,6 +2,7 @@
 import { revalidatePath } from 'next/cache';
 import { createClient } from '../../lib/supabase/server';
 import { guessZone } from '../../lib/tzguess';
+import { findOrCreateList } from '../../lib/lists';
 
 const must = (res) => { if (res.error) throw new Error(res.error.message); return res.data; };
 const phoneKey = (v) => { const d = String(v || '').replace(/\D/g, ''); return d.length >= 7 ? d.slice(-9) : null; };
@@ -53,7 +54,7 @@ export async function quickAdd(input) {
   }
   const org = must(await s.from('organizations').insert({
     name: String(input.company).trim(), phone: input.phone || null, email: input.email || null, notes: input.notes || null,
-    country: input.country || null, time_zone: zone, time_zone_guessed: guessed, list_id: input.list_id || null,
+    country: input.country || null, time_zone: zone, time_zone_guessed: guessed, list_id: String(input.new_list_name || '').trim() ? await findOrCreateList(s, input.new_list_name) : input.list_id || null,
     label_ids: [...reasons].map((k) => labelIds[k]), possible_duplicate: reasons.size > 0,
     duplicate_of_org: dups.orgs[0]?.id || dups.persons[0]?.organizations?.id || null, duplicate_of_person: dups.persons[0]?.id || null,
     owner_id: user.id, created_by: user.id,

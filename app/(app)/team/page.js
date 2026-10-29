@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { createClient } from '../../../lib/supabase/server';
 import { createAdminClient } from '../../../lib/supabase/admin';
+import { removeAccess, restoreAccess } from '../../actions/team';
 
 async function requireAdmin() {
   const s = createClient();
@@ -14,7 +15,7 @@ async function requireAdmin() {
 export default async function Team() {
   const { s, user } = await requireAdmin().catch(() => redirect('/today'));
   const hasKey = Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY);
-  const { data: profiles } = await s.from('profiles').select('id, full_name, role').order('created_at');
+  const { data: profiles } = await s.from('profiles').select('id, full_name, role, disabled').order('created_at');
 
   const emails = new Map();
   if (hasKey) {
@@ -99,6 +100,26 @@ export default async function Team() {
                 </form>
               </details>
             )}
+            {hasKey && p.id !== user.id && (p.disabled ? (
+              <form className="row-form" action={restoreAccess}>
+                <input type="hidden" name="id" value={p.id} />
+                <span className="tag warn">Access removed</span>
+                <button type="submit" className="ghost">Restore access</button>
+              </form>
+            ) : (
+              <details><summary>Remove access</summary>
+                <form className="row-form" action={removeAccess}>
+                  <input type="hidden" name="id" value={p.id} />
+                  <label>Give their records and open follow-ups to
+                    <select name="heir" defaultValue=""><option value="">No owner</option>
+                      {profiles.filter((x) => x.id !== p.id && !x.disabled).map((x) => <option key={x.id} value={x.id}>{x.full_name}</option>)}</select>
+                  </label>
+                  <label className="check"><input type="checkbox" name="confirm" required /> I understand they can no longer log in</label>
+                  <button type="submit" className="ghost danger">Remove access</button>
+                </form>
+              </details>
+            ))}
+            {p.disabled && !hasKey && <span className="tag warn">Access removed</span>}
           </div>
         ))}
       </section>

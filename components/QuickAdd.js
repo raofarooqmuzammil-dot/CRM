@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
-const EMPTY = { company: '', phone: '', country: 'US', name: '', email: '', notes: '', time_zone: '', list_id: '' };
+const EMPTY = { company: '', phone: '', country: 'US', name: '', email: '', notes: '', time_zone: '', list_id: '', new_list_name: '' };
 const ago = (iso) => {
   const m = Math.round((Date.now() - new Date(iso)) / 60000);
   return m < 60 ? `${m} minutes ago` : m < 1440 ? `${Math.round(m / 60)} hours ago` : `${Math.round(m / 1440)} days ago`;
@@ -33,7 +33,8 @@ export default function QuickAdd({ zones, lists, checkDuplicates, quickAdd }) {
     e.preventDefault();
     setBusy(true); setError('');
     try {
-      const r = await quickAdd(f);
+      const r = await quickAdd({ ...f, list_id: f.list_id === '__new__' ? '' : f.list_id, new_list_name: f.list_id === '__new__' ? f.new_list_name : '' });
+      router.refresh();
       if (open) { router.push(`/organizations/${r.id}?call=1`); return; }
       setSaved({ id: r.id, name: f.company, flagged: r.flagged });
       setF(EMPTY); setDups(null);
@@ -54,8 +55,10 @@ export default function QuickAdd({ zones, lists, checkDuplicates, quickAdd }) {
         </label>
         <label>List (industry)
           <select value={f.list_id} onChange={set('list_id')}><option value="">No list</option>
-            {lists.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}</select>
+            {lists.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+            <option value="__new__">+ New list...</option></select>
         </label>
+        {f.list_id === '__new__' && <label>New list name<input value={f.new_list_name} onChange={set('new_list_name')} required /></label>}
         <label>Contact name (optional)<input value={f.name} onChange={set('name')} /></label>
         <label>Email<input value={f.email} onChange={set('email')} type="email" /></label>
         <label>Time zone

@@ -44,7 +44,7 @@ async function findOrCreateList(s, name, cache) {
   if (!n) return null;
   const k = n.toLowerCase();
   if (cache.has(k)) return cache.get(k);
-  const ex = must(await s.from('lists').select('id').ilike('name', n).limit(1));
+  const ex = must(await s.from('lists').select('id').ilike('name', n.replace(/[%_\\]/g, '\\$&')).limit(1));
   const id = ex[0]?.id || must(await s.from('lists').insert({ name: n }).select('id').single()).id;
   cache.set(k, id);
   return id;

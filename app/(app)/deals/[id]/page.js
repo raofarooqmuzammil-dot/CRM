@@ -1,7 +1,8 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
-import { createClient } from '../../../../lib/supabase/server';
+import { createClient, getUser } from '../../../../lib/supabase/server';
+import { resolveDealLinks } from '../../../../lib/deals';
 import MoveStage from '../../../../components/MoveStage';
 import LabelTags from '../../../../components/LabelTags';
 import { CURRENCIES, money } from '../../../../lib/money';
@@ -12,13 +13,11 @@ export default async function DealPage({ params }) {
   const { data: deal } = await supabase.from('deals').select('*, person:persons(id, name), organization:organizations(id, name), owner:profiles!deals_owner_id_fkey(full_name)')
     .eq('id', params.id).maybeSingle();
   if (!deal) notFound();
-  const [{ data: me }, { data: stages }, { data: pipe }, { data: reasons }, { data: persons }, { data: orgs }, { data: labels }, { data: people }] = await Promise.all([
+  const [{ data: me }, { data: stages }, { data: pipe }, { data: reasons }, { data: labels }, { data: people }] = await Promise.all([
     supabase.from('profiles').select('role').eq('id', user.id).single(),
     supabase.from('stages').select('id, name').eq('pipeline_id', deal.pipeline_id).order('sort').order('created_at'),
     supabase.from('pipelines').select('name').eq('id', deal.pipeline_id).single(),
     supabase.from('lost_reasons').select('id, name').order('sort').order('created_at'),
-    supabase.from('persons').select('id, name').order('name'),
-    supabase.from('organizations').select('id, name').order('name'),
     supabase.from('labels').select('id, name, color').order('name'),
     supabase.from('profiles').select('id, full_name').order('full_name'),
   ]);
@@ -41,9 +40,12 @@ export default async function DealPage({ params }) {
   }
   async function updateDeal(fd) {
     'use server';
-    const { error } = await createClient().from('deals').update({
-      title: fd.get('title'), person_id: fd.get('person_id') || null,
-      organization_id: fd.get('organization_id') || null, value: Number(fd.get('value') || 0),
+    const s = createClient();
+    const u = await getUser();
+    const links = await resolveDealLinks(s, fd.get('organization_name'), fd.get('contact_name'), u.id);
+    const { error } = await s.from('deals').update({
+      title: fd.get('title'), person_id: links.person_id,
+      organization_id: links.organization_id, value: Number(fd.get('value') || 0),
       currency: fd.get('currency'), label_ids: fd.getAll('label_ids'),
       expected_close_date: fd.get('expected_close_date') || null, owner_id: fd.get('owner_id') || null,
       source_channel: fd.get('source_channel') || null, source_channel_id: fd.get('source_channel_id') || null,
@@ -109,14 +111,8 @@ export default async function DealPage({ params }) {
         <summary><strong>Edit deal</strong></summary>
         <form className="grid" action={updateDeal}>
           <label>Title<input name="title" defaultValue={deal.title} required /></label>
-          <label>Contact person
-            <select name="person_id" defaultValue={deal.person_id || ''}><option value="">None</option>
-              {persons?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
-          </label>
-          <label>Organization
-            <select name="organization_id" defaultValue={deal.organization_id || ''}><option value="">None</option>
-              {orgs?.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}</select>
-          </label>
+          <label>Contact person (name)<input name="contact_name" defaultValue={deal.person?.name || ''} /></label>
+          <label>Organization (name)<input name="organization_name" defaultValue={deal.organization?.name || ''} /></label>
           <label>Value<input name="value" type="number" min="0" step="0.01" defaultValue={deal.value} /></label>
           <label>Currency
             <select name="currency" defaultValue={deal.currency}>{CURRENCIES.map((c) => <option key={c}>{c}</option>)}</select>

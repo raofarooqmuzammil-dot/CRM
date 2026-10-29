@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { revalidatePath } from 'next/cache';
 import { createClient } from '../../../lib/supabase/server';
+import { resolveDealLinks } from '../../../lib/deals';
 import MoveStage from '../../../components/MoveStage';
 import LabelTags from '../../../components/LabelTags';
 import { CURRENCIES, money, totals } from '../../../lib/money';
@@ -15,17 +16,15 @@ export default async function Deals({ searchParams }) {
   }
   const pipeline = pipelines.find((p) => p.id === sp.pipeline) || pipelines[0];
 
-  const [{ data: stages }, { data: deals }, { data: persons }, { data: orgs }, { data: labels }, { data: people }] = await Promise.all([
+  const [{ data: stages }, { data: deals }, { data: labels }, { data: people }, { data: pre }] = await Promise.all([
     supabase.from('stages').select('id, name').eq('pipeline_id', pipeline.id).order('sort').order('created_at'),
     supabase.from('deals')
       .select('id, title, value, currency, stage_id, expected_close_date, label_ids, person:persons(id, name), organization:organizations(name), owner:profiles!deals_owner_id_fkey(full_name)')
       .eq('pipeline_id', pipeline.id).eq('status', 'open').order('created_at', { ascending: false }),
-    supabase.from('persons').select('id, name, organization_id').order('name'),
-    supabase.from('organizations').select('id, name').order('name'),
     supabase.from('labels').select('id, name, color').order('name'),
     supabase.from('profiles').select('id, full_name').order('full_name'),
+    sp.person ? supabase.from('persons').select('id, name, organizations(id, name)').eq('id', sp.person).maybeSingle() : Promise.resolve({ data: null }),
   ]);
-  const pre = persons?.find((p) => p.id === sp.person);
 
   async function moveDeal(fd) {
     'use server';
@@ -39,14 +38,14 @@ export default async function Deals({ searchParams }) {
     const { data: { user } } = await s.auth.getUser();
     let phone = fd.get('phone') || null;
     let email = fd.get('email') || null;
-    const personId = fd.get('person_id') || null;
+    const { organization_id: orgId, person_id: personId } = await resolveDealLinks(s, fd.get('organization_name'), fd.get('contact_name'), user.id);
     if (personId && (!phone || !email)) {
       const { data: p } = await s.from('persons').select('phone, email').eq('id', personId).maybeSingle();
       phone = phone || p?.phone || null;
       email = email || p?.email || null;
     }
     const { error } = await s.from('deals').insert({
-      title: fd.get('title'), person_id: personId, organization_id: fd.get('organization_id') || null,
+      title: fd.get('title'), person_id: personId, organization_id: orgId,
       value: Number(fd.get('value') || 0), currency: fd.get('currency'),
       pipeline_id: fd.get('pipeline_id'), stage_id: fd.get('stage_id'),
       label_ids: fd.getAll('label_ids'), expected_close_date: fd.get('expected_close_date') || null,
@@ -71,14 +70,8 @@ export default async function Deals({ searchParams }) {
         <form className="grid" action={addDeal}>
           <input type="hidden" name="pipeline_id" value={pipeline.id} />
           <label>Title<input name="title" required defaultValue={pre ? `${pre.name} deal` : ''} /></label>
-          <label>Contact person
-            <select name="person_id" defaultValue={pre?.id || ''}><option value="">None</option>
-              {persons?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
-          </label>
-          <label>Organization
-            <select name="organization_id" defaultValue={pre?.organization_id || ''}><option value="">None</option>
-              {orgs?.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}</select>
-          </label>
+          <label>Contact person (name)<input name="contact_name" defaultValue={pre?.name || ''} placeholder="Optional" /></label>
+          <label>Organization (name)<input name="organization_name" defaultValue={pre?.organizations?.name || ''} placeholder="Created if it does not exist" /></label>
           <label>Value<input name="value" type="number" min="0" step="0.01" defaultValue="0" /></label>
           <label>Currency
             <select name="currency">{CURRENCIES.map((c) => <option key={c}>{c}</option>)}</select>

@@ -1,0 +1,11 @@
+import { pageNumbers, pageSize, cleanSp } from './lib/pager.js';
+let bad = 0; const eq = (a, b, m) => { if (JSON.stringify(a) !== JSON.stringify(b)) { bad++; console.log('FAIL', m, JSON.stringify(a), '!=', JSON.stringify(b)); } else console.log('ok  ', m); };
+eq(pageNumbers(1, 1), [1], 'one page');
+eq(pageNumbers(1, 3), [1, 2, 3], 'three pages show all');
+eq(pageNumbers(1, 12), [1, 2, '…', 11, 12], 'first of twelve');
+eq(pageNumbers(6, 12), [1, 2, '…', 5, 6, 7, '…', 11, 12], 'middle of twelve');
+eq(pageNumbers(12, 12), [1, 2, '…', 11, 12], 'last of twelve');
+eq(pageNumbers(4, 6), [1, 2, 3, 4, 5, 6], 'no gaps when pages are close');
+eq([pageSize({ n: '200' }), pageSize({ n: '50' }), pageSize({ n: '7' }), pageSize({}), pageSize(undefined)], [200, 50, 100, 100, 100], 'rows per page, 100 by default, bad values ignored');
+eq(cleanSp({ a: 'x', b: ['y', 'z'], c: undefined }), { a: 'x', b: 'y' }, 'search parameters become plain strings');
+console.log(bad ? `${bad} FAILED` : 'ALL PASSED');

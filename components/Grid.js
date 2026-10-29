@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import LocalTime from './LocalTime';
+import Pager from './Pager';
 import { updateCell, moveToList } from '../app/actions/grid';
 
 const INPUT = { text: 'text', number: 'number', date: 'date', link: 'text' };
@@ -74,7 +75,7 @@ function LabelsCell({ ids, labels, onCommit }) {
   );
 }
 
-export default function Grid({ entity, columns, rows, labels, lists, storageKey, sortHrefs, sort, dir, addHref, total, from, to, prevHref, nextHref }) {
+export default function Grid({ entity, columns, rows, labels, lists, storageKey, sortHrefs, sort, dir, addHref, total, from, to, pager }) {
   const [data, setData] = useState(rows);
   const [status, setStatus] = useState({});
   const [sel, setSel] = useState([]);
@@ -192,10 +193,7 @@ export default function Grid({ entity, columns, rows, labels, lists, storageKey,
           </tbody>
         </table>
       </div>
-      <div className="pager">
-        {prevHref ? <Link href={prevHref}>Previous</Link> : <span className="muted">Previous</span>}
-        {nextHref ? <Link href={nextHref}>Next</Link> : <span className="muted">Next</span>}
-      </div>
+      {pager && <Pager {...pager} />}
     </>
   );
 }

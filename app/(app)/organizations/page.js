@@ -7,12 +7,14 @@ import { CustomInputs } from '../../../components/CustomFields';
 import { ZONES, zonesInHours } from '../../../lib/zones';
 import { getHours } from '../../../lib/hours';
 import { loadFields, collectCustom } from '../../../lib/custom';
-import { PAGE_SIZE, SORT_OPTIONS, orgColumns, orgRows, pageHref, sortHrefs, parseSort, applySort } from '../../../lib/gridrows';
+import { createList } from '../../actions/lists';
+import { pageSize, cleanSp, SORT_OPTIONS, orgColumns, orgRows, pageHref, sortHrefs, parseSort, applySort } from '../../../lib/gridrows';
 
 export default async function Organizations({ searchParams }) {
   const sp = searchParams || {};
   const supabase = getClient();
   const page = Math.max(1, Number(sp.page) || 1);
+  const size = pageSize(sp);
   const [cfields, hours, { data: labels }, { data: people }, { data: lists }, { data: outcomes }] = await Promise.all([
     loadFields(supabase, 'organization'), getHours(supabase),
     supabase.from('labels').select('id, name, color').order('name'),
@@ -40,11 +42,11 @@ export default async function Organizations({ searchParams }) {
   if (sp.calls === 'many') query = query.gte('call_count', 3);
   query = applySort(query, sp);
   const cur = parseSort(sp);
-  const from = (page - 1) * PAGE_SIZE;
+  const from = (page - 1) * size;
 
   const count = (q) => q.then((r) => r.count || 0);
   const [{ data: orgs, count: total }, allCount, noneCount, ...listCounts] = await Promise.all([
-    query.range(from, from + PAGE_SIZE - 1),
+    query.range(from, from + size - 1),
     count(supabase.from('organizations').select('id', { count: 'exact', head: true })),
     count(supabase.from('organizations').select('id', { count: 'exact', head: true }).is('list_id', null)),
     ...(lists || []).map((l) => count(supabase.from('organizations').select('id', { count: 'exact', head: true }).eq('list_id', l.id))),
@@ -60,7 +62,7 @@ export default async function Organizations({ searchParams }) {
   const columns = orgColumns(cfields, people || [], lists || []);
   const rows = orgRows(orgs || [], { cfields, next });
   const filtered = Boolean(term || sp.label || sp.country || sp.owner || sp.dup || sp.calling || sp.calls || sp.last);
-  const lastPage = Math.max(1, Math.ceil((total || 0) / PAGE_SIZE));
+  const lastPage = Math.max(1, Math.ceil((total || 0) / size));
   const tab = (id, label, n) => (
     <Link key={id || 'all'} href={pageHref('/organizations', sp, { list: id, page: '' })}
       className={(sp.list || '') === (id || '') ? 'on' : ''}>{label}<span className="count">{n}</span></Link>
@@ -96,6 +98,14 @@ export default async function Organizations({ searchParams }) {
         {(lists || []).map((l, i) => tab(l.id, l.name, listCounts[i]))}
         {noneCount > 0 && tab('none', 'No list', noneCount)}
       </p>
+      <details className="newlist">
+        <summary>+ New list</summary>
+        <form className="row-form" action={createList}>
+          <input type="color" name="color" defaultValue="#66726f" aria-label="Color" />
+          <input name="name" placeholder="NEMT, Roofers, HVAC..." required />
+          <button type="submit">Create list</button>
+        </form>
+      </details>
       <section className="panel">
         <form className="grid" method="get">
           {sp.list && <input type="hidden" name="list" value={sp.list} />}
@@ -179,9 +189,8 @@ export default async function Organizations({ searchParams }) {
         storageKey="callcrm-cols:organizations"
         sortHrefs={sortHrefs('/organizations', sp, columns)} sort={cur.key} dir={cur.dir}
         addHref={pageHref('/organizations', sp, { addcol: 1 }) + '#addcol'}
-        total={total || 0} from={total ? from + 1 : 0} to={Math.min(from + PAGE_SIZE, total || 0)}
-        prevHref={page > 1 ? pageHref('/organizations', sp, { page: page - 1 }) : null}
-        nextHref={page < lastPage ? pageHref('/organizations', sp, { page: page + 1 }) : null}
+        total={total || 0} from={total ? from + 1 : 0} to={Math.min(from + size, total || 0)}
+        pager={{ path: '/organizations', sp: cleanSp(sp), page, lastPage, total: total || 0, size }}
       />
     </>
   );

@@ -24,7 +24,7 @@ Read this first, then read the code before changing anything. Owner: Ninja (admi
 - Time zones on organizations and persons; guessed from sheet/address/phone when missing and marked "guessed". Business hours (admin setting) drive the "Calling now" filter.
 - Results board: one column per latest call result; Interested column has Create deal.
 - Deals: pipeline board (six default stages), won/lost with reasons, USD/GBP/AUD. Deal forms take organization and contact NAMES (find or create), not dropdowns.
-- Grids: spreadsheet style with editing in cells, sort dropdown, numbered pages (50/100/200), Columns button. Ninja does NOT like how the grid looks and wants a redesign (see open items).
+- Organizations and Persons have a List view (default, roomy Pipedrive-style rows: name, phone, local time, result badge, last called, next follow-up, owner) and a Grid view (spreadsheet with cell editing, Columns button, bulk Move to list). A List/Grid switch (remembered per browser), a Sort by dropdown, and a Filters button sit above. Numbered pages (50/100/200) work in both views. Cards view was discussed but not built.
 - Removing a user = ban login (Supabase ban_duration), mark profiles.disabled, hand records and open follow-ups to a chosen person. Restorable. No hard delete.
 - Dropped for good: CloudTalk integration, personal columns, separate Leads list, admin dialing mode.
 
@@ -52,9 +52,9 @@ Read this first, then read the code before changing anything. Owner: Ninja (admi
 
 ## Open items (not built)
 1. Confirm the live site runs the newest version and test everything on the real setup (only practice data so far).
-2. Redesign the grid look (options discussed: List like Pipedrive, Cards, or a List/Grid/Cards switcher). Needs his screenshot or what looks wrong.
-3. Queue mode: optional "call next", per-caller auto-load toggle, cooldown setting (default 3 days).
-4. Dashboard: calls per caller, outcomes, conversion by stage, results per list.
+2. Check how the new List view looks on his live site and phone; adjust from his feedback or screenshot.
+3. Queue mode (planned, approved): OPTIONAL and per caller, off by default. A "Call next" button opens the next never-called organization in the list tab being viewed, skipping Do Not Call and private records; optional auto-open next after logging; an organization opened this way is held for 10 minutes for that caller (needs 2 small columns); optional business-hours-only filter.
+4. Dashboard (planned, approved): Today vs this week; calls per caller (admin sees all, callers see their own); results per list; conversion by stage with a Called > Interested > Deal > Won funnel. Uses one team time zone for "today" (a Settings option).
 5. Deals: custom columns, follow-ups attached to a deal.
 6. Phone-screen and visual cleanup.
 7. Removed users still appear in owner dropdowns, and an already logged-in session can last up to about an hour after removal.

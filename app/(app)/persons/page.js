@@ -2,6 +2,11 @@ import Link from 'next/link';
 import { revalidatePath } from 'next/cache';
 import { createClient, getClient, getUser } from '../../../lib/supabase/server';
 import Grid from '../../../components/Grid';
+import Pager from '../../../components/Pager';
+import RowList from '../../../components/RowList';
+import SortSelect from '../../../components/SortSelect';
+import ViewSwitch from '../../../components/ViewSwitch';
+import { personListRows } from '../../../lib/listrows';
 import AddColumn from '../../../components/AddColumn';
 import { CustomInputs } from '../../../components/CustomFields';
 import { ZONES, zonesInHours } from '../../../lib/zones';
@@ -15,16 +20,17 @@ export default async function Persons({ searchParams }) {
   const supabase = getClient();
   const page = Math.max(1, Number(sp.page) || 1);
   const size = pageSize(sp);
-  const [cfields, hours, { data: labels }, { data: people }, { data: roles }, { data: lists }] = await Promise.all([
+  const [cfields, hours, { data: labels }, { data: people }, { data: roles }, { data: lists }, { data: outcomes }] = await Promise.all([
     loadFields(supabase, 'person'), getHours(supabase),
     supabase.from('labels').select('id, name, color').order('name'),
     supabase.from('profiles').select('id, full_name').order('full_name'),
     supabase.from('contact_roles').select('id, name').order('sort').order('created_at'),
     supabase.from('lists').select('id, name').order('name'),
+    supabase.from('call_outcomes').select('id, name, color').order('sort').order('created_at'),
   ]);
 
   let query = supabase.from('persons').select(
-    'id, name, role, phone, email, notes, label_ids, owner_id, time_zone, eff_time_zone, do_not_call, possible_duplicate, custom, call_count, last_outcome, ' + (sp.list ? 'organizations!inner(id, name)' : 'organizations(id, name)'),
+    'id, name, role, phone, email, notes, label_ids, owner_id, time_zone, eff_time_zone, do_not_call, possible_duplicate, visible_to, custom, call_count, last_outcome, last_called_at, last_called_by, ' + (sp.list ? 'organizations!inner(id, name)' : 'organizations(id, name)'),
     { count: 'exact' });
   const term = String(sp.q || '').replace(/[%,()*]/g, ' ').trim();
   if (term) query = query.or(`name.ilike.%${term}%,phone.ilike.%${term}%,email.ilike.%${term}%`);
@@ -48,6 +54,8 @@ export default async function Persons({ searchParams }) {
   const next = new Map();
   (acts || []).forEach((a) => { if (!next.has(a.person_id)) next.set(a.person_id, a.due_at); });
 
+  const view = sp.v === 'grid' ? 'grid' : 'list';
+  const listRows = personListRows(persons || [], { next, people: people || [], outcomes: outcomes || [] });
   const columns = personColumns(cfields, people || [], roles || []);
   const rows = personRows(persons || [], { cfields, next });
   const total = count || 0;
@@ -79,7 +87,12 @@ export default async function Persons({ searchParams }) {
   return (
     <>
       <h1>Persons</h1>
-      <section className="panel">
+      <div className="toolbar">
+        <SortSelect path="/persons" sp={cleanSp(sp)} value={sp.s || 'created-desc'} options={SORT_OPTIONS} />
+        <ViewSwitch path="/persons" sp={cleanSp(sp)} view={view} />
+      </div>
+      <details className="panel" open={filtered}>
+        <summary><strong>Filters</strong>{filtered && <span className="muted"> (on)</span>}</summary>
         <form className="grid" method="get">
           <label>Search<input name="q" defaultValue={sp.q || ''} placeholder="Name, phone, or email" /></label>
           <label>Label
@@ -105,13 +118,11 @@ export default async function Persons({ searchParams }) {
             <select name="list" defaultValue={sp.list || ''}><option value="">Any</option>
               {lists?.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}</select>
           </label>
-          <label>Sort by
-            <select name="s" defaultValue={sp.s || 'created-desc'}>{SORT_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
-          </label>
+          <input type="hidden" name="s" value={sp.s || 'created-desc'} />
           <button type="submit">Filter</button>
           {filtered && <Link href="/persons">Clear filters</Link>}
         </form>
-      </section>
+      </details>
       <details className="panel">
         <summary><strong>Add person</strong></summary>
         <form className="grid" action={addPerson}>
@@ -143,14 +154,22 @@ export default async function Persons({ searchParams }) {
           <button type="submit">Save person</button>
         </form>
       </details>
-      <AddColumn entity="person" open={Boolean(sp.addcol)} />
-      <Grid
+      {view === 'grid' && <AddColumn entity="person" open={Boolean(sp.addcol)} />}
+      {view === 'grid' ? (
+        <Grid
         entity="persons" columns={columns} rows={rows} labels={labels || []} storageKey="callcrm-cols:persons"
         sortHrefs={sortHrefs('/persons', sp, columns)} sort={cur.key} dir={cur.dir}
         addHref={pageHref('/persons', sp, { addcol: 1 }) + '#addcol'}
         total={total} from={total ? from + 1 : 0} to={Math.min(from + size, total)}
         pager={{ path: '/persons', sp: cleanSp(sp), page, lastPage, total: total || 0, size }}
-      />
+        />
+      ) : (
+        <>
+          <p className="muted">{total ? `Showing ${from + 1}–${Math.min(from + size, total)} of ${total}` : 'No results'}</p>
+          <RowList rows={listRows} empty="No contacts match." />
+          <Pager path="/persons" sp={cleanSp(sp)} page={page} lastPage={lastPage} total={total} size={size} />
+        </>
+      )}
     </>
   );
 }

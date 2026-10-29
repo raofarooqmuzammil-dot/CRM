@@ -2,6 +2,11 @@ import Link from 'next/link';
 import { revalidatePath } from 'next/cache';
 import { createClient, getClient, getUser } from '../../../lib/supabase/server';
 import Grid from '../../../components/Grid';
+import Pager from '../../../components/Pager';
+import RowList from '../../../components/RowList';
+import SortSelect from '../../../components/SortSelect';
+import ViewSwitch from '../../../components/ViewSwitch';
+import { orgListRows } from '../../../lib/listrows';
 import AddColumn from '../../../components/AddColumn';
 import { CustomInputs } from '../../../components/CustomFields';
 import { ZONES, zonesInHours } from '../../../lib/zones';
@@ -20,11 +25,11 @@ export default async function Organizations({ searchParams }) {
     supabase.from('labels').select('id, name, color').order('name'),
     supabase.from('profiles').select('id, full_name').order('full_name'),
     supabase.from('lists').select('id, name, color').order('sort').order('created_at'),
-    supabase.from('call_outcomes').select('id, name').order('sort').order('created_at'),
+    supabase.from('call_outcomes').select('id, name, color').order('sort').order('created_at'),
   ]);
 
   let query = supabase.from('organizations').select(
-    'id, name, phone, email, website, address, country, time_zone, label_ids, owner_id, list_id, custom, do_not_call, possible_duplicate, call_count, last_outcome, persons(count)',
+    'id, name, phone, email, website, address, country, time_zone, label_ids, owner_id, list_id, custom, do_not_call, possible_duplicate, visible_to, call_count, last_outcome, last_called_at, last_called_by, persons(count)',
     { count: 'exact' });
   const term = String(sp.q || '').replace(/[%,()*]/g, ' ').trim();
   if (term) query = query.or(`name.ilike.%${term}%,phone.ilike.%${term}%,website.ilike.%${term}%,email.ilike.%${term}%`);
@@ -59,6 +64,8 @@ export default async function Organizations({ searchParams }) {
   const next = new Map();
   (acts || []).forEach((a) => { if (!next.has(a.organization_id)) next.set(a.organization_id, a.due_at); });
 
+  const view = sp.v === 'grid' ? 'grid' : 'list';
+  const listRows = orgListRows(orgs || [], { next, people: people || [], lists: lists || [], outcomes: outcomes || [] });
   const columns = orgColumns(cfields, people || [], lists || []);
   const rows = orgRows(orgs || [], { cfields, next });
   const filtered = Boolean(term || sp.label || sp.country || sp.owner || sp.dup || sp.calling || sp.calls || sp.last);
@@ -106,7 +113,12 @@ export default async function Organizations({ searchParams }) {
           <button type="submit">Create list</button>
         </form>
       </details>
-      <section className="panel">
+      <div className="toolbar">
+        <SortSelect path="/organizations" sp={cleanSp(sp)} value={sp.s || 'created-desc'} options={SORT_OPTIONS} />
+        <ViewSwitch path="/organizations" sp={cleanSp(sp)} view={view} />
+      </div>
+      <details className="panel" open={filtered}>
+        <summary><strong>Filters</strong>{filtered && <span className="muted"> (on)</span>}</summary>
         <form className="grid" method="get">
           {sp.list && <input type="hidden" name="list" value={sp.list} />}
           <label>Search<input name="q" defaultValue={sp.q || ''} placeholder="Name, phone, website, or email" /></label>
@@ -138,13 +150,11 @@ export default async function Organizations({ searchParams }) {
           <label>Time
             <select name="calling" defaultValue={sp.calling || ''}><option value="">Any</option><option value="1">Calling now ({hours.start}:00 to {hours.end}:00 local)</option></select>
           </label>
-          <label>Sort by
-            <select name="s" defaultValue={sp.s || 'created-desc'}>{SORT_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
-          </label>
+          <input type="hidden" name="s" value={sp.s || 'created-desc'} />
           <button type="submit">Filter</button>
           {filtered && <Link href={pageHref('/organizations', { list: sp.list }, {})}>Clear filters</Link>}
         </form>
-      </section>
+      </details>
       <details className="panel">
         <summary><strong>Add organization</strong></summary>
         <form className="grid" action={addOrganization}>
@@ -183,15 +193,23 @@ export default async function Organizations({ searchParams }) {
           <button type="submit">Save organization</button>
         </form>
       </details>
-      <AddColumn entity="organization" open={Boolean(sp.addcol)} />
-      <Grid
+      {view === 'grid' && <AddColumn entity="organization" open={Boolean(sp.addcol)} />}
+      {view === 'grid' ? (
+        <Grid
         entity="organizations" columns={columns} rows={rows} labels={labels || []} lists={lists || []}
         storageKey="callcrm-cols:organizations"
         sortHrefs={sortHrefs('/organizations', sp, columns)} sort={cur.key} dir={cur.dir}
         addHref={pageHref('/organizations', sp, { addcol: 1 }) + '#addcol'}
         total={total || 0} from={total ? from + 1 : 0} to={Math.min(from + size, total || 0)}
         pager={{ path: '/organizations', sp: cleanSp(sp), page, lastPage, total: total || 0, size }}
-      />
+        />
+      ) : (
+        <>
+          <p className="muted">{total ? `Showing ${from + 1}–${Math.min(from + size, total)} of ${total}` : 'No results'}</p>
+          <RowList rows={listRows} empty="Nothing here yet. Add one above." />
+          <Pager path="/organizations" sp={cleanSp(sp)} page={page} lastPage={lastPage} total={total} size={size} />
+        </>
+      )}
     </>
   );
 }

@@ -4,7 +4,7 @@ import { useState } from 'react';
 const local = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 
 // Used to schedule a new activity, or to edit one (pass `initial`).
-export default function ScheduleForm({ action, personId, orgId, types, initial, submitLabel = 'Schedule', defaultTitle, defaultType }) {
+export default function ScheduleForm({ action, personId, orgId, dealId, types, initial, submitLabel = 'Schedule', defaultTitle, defaultType }) {
   const [when, setWhen] = useState(initial ? local(new Date(initial.due_at)) : '');
   const preset = (days) => {
     const d = new Date();
@@ -19,6 +19,7 @@ export default function ScheduleForm({ action, personId, orgId, types, initial, 
       {initial && <input type="hidden" name="id" value={initial.id} />}
       {personId && <input type="hidden" name="person_id" value={personId} />}
       {orgId && <input type="hidden" name="organization_id" value={orgId} />}
+      {dealId && <input type="hidden" name="deal_id" value={dealId} />}
       <input type="hidden" name="due_at" value={when ? new Date(when).toISOString() : ''} />
       <label>What<input name="title" defaultValue={initial?.title ?? defaultTitle ?? 'Follow-up call'} required /></label>
       <label>Type

@@ -9,6 +9,8 @@ import LabelTags from '../../../../components/LabelTags';
 import { CustomInputs, CustomValues } from '../../../../components/CustomFields';
 import { loadFields, collectCustom } from '../../../../lib/custom';
 import { parseWho } from '../../../../lib/who';
+import { claimNext } from '../../../../lib/queue';
+import { callNext } from '../../../actions/queue';
 import { getHours } from '../../../../lib/hours';
 import { ZONES, localTime, inHours, zoneLabel } from '../../../../lib/zones';
 
@@ -29,7 +31,7 @@ export default async function OrganizationPage({ params, searchParams }) {
   const [{ data: org }, { data: me }, { data: labels }, { data: people }, { data: lists }, { data: contacts },
     { data: acts }, { data: calls }, { data: types }, { data: outcomes }, hours, cfields, { data: roles }] = await Promise.all([
     supabase.from('organizations').select('*').eq('id', params.id).maybeSingle(),
-    supabase.from('profiles').select('role').eq('id', user.id).single(),
+    supabase.from('profiles').select('role, queue_enabled').eq('id', user.id).single(),
     supabase.from('labels').select('id, name, color').order('name'),
     supabase.from('profiles').select('id, full_name').order('full_name'),
     supabase.from('lists').select('id, name, color').order('name'),
@@ -117,6 +119,15 @@ export default async function OrganizationPage({ params, searchParams }) {
       if (e2) throw new Error(e2.message);
     }
     revalidatePath('/', 'layout');
+    if (fd.get('queue') === '1') {
+      const { data: prof } = await s.from('profiles').select('queue_auto_next, queue_hours_only').eq('id', u.id).single();
+      if (prof?.queue_auto_next) {
+        const list = String(fd.get('queue_list') || '');
+        const nextId = await claimNext(s, { list, hoursOnly: prof.queue_hours_only, hours: await getHours(s) });
+        const q = list ? `&list=${encodeURIComponent(list)}` : '';
+        redirect(nextId ? `/organizations/${nextId}?call=1&q=1${q}` : `/organizations?queue=empty${q}`);
+      }
+    }
   }
   async function addContact(fd) {
     'use server';
@@ -172,6 +183,12 @@ export default async function OrganizationPage({ params, searchParams }) {
       <p><Link href="/organizations">Back to organizations</Link></p>
       <h1>{org.name}</h1>
       {searchParams?.call && org.phone && !org.do_not_call && <p><a className="callbtn" href={`tel:${org.phone}`}>Call {org.phone}</a></p>}
+      {searchParams?.q === '1' && me?.queue_enabled && (
+        <form action={callNext} className="row-form">
+          <input type="hidden" name="list" value={searchParams.list || ''} /><input type="hidden" name="skip" value={org.id} />
+          <button className="ghost" type="submit">Skip, next organization</button>
+        </form>
+      )}
       {recentByOther && (
         <section className="panel notice">
           <strong>{nameOf(org.last_called_by) || 'Someone'}</strong> called this {rel(org.last_called_at)}{org.last_outcome ? ` (${org.last_outcome})` : ''}. You can still call.
@@ -222,7 +239,8 @@ export default async function OrganizationPage({ params, searchParams }) {
         <h2>Log a call</h2>
         {org.do_not_call
           ? <p className="muted">Calling is off because this organization is marked Do not call.</p>
-          : <LogCall action={logCall} outcomes={outcomes || []} hint={hint} contacts={contacts || []} roles={roles || []} />}
+          : <LogCall action={logCall} outcomes={outcomes || []} hint={hint} contacts={contacts || []} roles={roles || []}
+            hidden={searchParams?.q === '1' ? { queue: '1', queue_list: searchParams.list || '' } : undefined} />}
       </section>
 
       <section className="panel">

@@ -12,7 +12,7 @@ Read this first, then read the code before changing anything. Owner: Ninja (admi
 - Next.js 14 (App Router, plain JavaScript), Supabase (Postgres, auth, row-level security), Vercel. Free tiers.
 - Deploy: files go to GitHub, Vercel redeploys. KNOWN PROBLEM: his browser uploads flattened folders, leaving loose files in the repo root while the old app/, components/, lib/ stayed live. Always have him check GitHub shows paths like `app/(app)/results/page.js` before committing, or use GitHub Desktop. A way to confirm the new version is live: the Import page shows "Which list is this file?" and the top bar has Results.
 - Vercel env vars (type Config, not Secret): NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY. SUPABASE_SERVICE_ROLE_KEY is a Secret, used only by the Team page (add users, remove access). Never expose it.
-- SQL files in `supabase/`, run once each in this order: schema, phase1b, phase1c, phase1d, phase2a, phase3a, phase3b, phase4a, phase5a, phase6a, phase7a. `clear_test_data.sql` is optional and deletes records.
+- SQL files in `supabase/`, run once each in this order: schema, phase1b, phase1c, phase1d, phase2a, phase3a, phase3b, phase4a, phase5a, phase6a, phase7a, phase8a, phase9a. `clear_test_data.sql` is optional and deletes records.
 
 ## Product rules already decided
 - Roles: admin and caller. Shared by default; "Private" = owner and admin only (enforced by row-level security). Only admin deletes records. Callers can import, add list/labels/roles and other settings (shared by the team). Custom columns: anyone can add, only admin renames/hides/deletes.
@@ -25,6 +25,9 @@ Read this first, then read the code before changing anything. Owner: Ninja (admi
 - Results board: one column per latest call result; Interested column has Create deal.
 - Deals: pipeline board (six default stages), won/lost with reasons, USD/GBP/AUD. Deal forms take organization and contact NAMES (find or create), not dropdowns.
 - Organizations and Persons have a List view (default, roomy Pipedrive-style rows: name, phone, local time, result badge, last called, next follow-up, owner) and a Grid view (spreadsheet with cell editing, Columns button, bulk Move to list). A List/Grid switch (remembered per browser), a Sort by dropdown, and a Filters button sit above. Numbered pages (50/100/200) work in both views. Cards view was discussed but not built.
+- Queue mode (optional, per caller, off by default, set in the Queue mode box on Organizations): a Call next button opens the next never-called organization in the list tab being viewed, skipping called, Do Not Call, private, and held ones (held 10 minutes for whoever opened it, via the claim_next_org database function). Options: open the next one automatically after logging a call, and only organizations inside business hours. Skip, next organization is on the organization page when opened this way.
+- Dashboard (top bar): calls today / this week / last week, calls per caller (admin sees all, a caller sees only their own), results per list, funnel Called > Interested > Deal > Won, deals by stage, follow-ups due. Team time zone (Settings, admin) decides when today and this week start. Numbers come from dashboard_* database functions.
+- Deals can have follow-ups (shown on Today and on the organization) and custom columns (Deal fields in Settings).
 - Removing a user = ban login (Supabase ban_duration), mark profiles.disabled, hand records and open follow-ups to a chosen person. Restorable. No hard delete.
 - Dropped for good: CloudTalk integration, personal columns, separate Leads list, admin dialing mode.
 
@@ -53,8 +56,7 @@ Read this first, then read the code before changing anything. Owner: Ninja (admi
 ## Open items (not built)
 1. Confirm the live site runs the newest version and test everything on the real setup (only practice data so far).
 2. Check how the new List view looks on his live site and phone; adjust from his feedback or screenshot.
-3. Queue mode (planned, approved): OPTIONAL and per caller, off by default. A "Call next" button opens the next never-called organization in the list tab being viewed, skipping Do Not Call and private records; optional auto-open next after logging; an organization opened this way is held for 10 minutes for that caller (needs 2 small columns); optional business-hours-only filter.
-4. Dashboard (planned, approved): Today vs this week; calls per caller (admin sees all, callers see their own); results per list; conversion by stage with a Called > Interested > Deal > Won funnel. Uses one team time zone for "today" (a Settings option).
-5. Deals: custom columns, follow-ups attached to a deal.
-6. Phone-screen and visual cleanup.
-7. Removed users still appear in owner dropdowns, and an already logged-in session can last up to about an hour after removal.
+3. Cards view (a third view) was discussed but not built; wait to see whether the phone layout of the List view is enough.
+4. Queue mode does not return called leads after a cooldown (only never-called organizations); the dashboard funnel counts Interested by the outcome name "Interested" (renaming it breaks that number).
+5. Removed users still appear in owner dropdowns, and an already logged-in session can last up to about an hour after removal.
+6. The phone layout was only given a light pass (top bar scrolls sideways, tighter padding); needs real feedback from Ninja's phone.

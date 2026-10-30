@@ -4,7 +4,7 @@ import { useState } from 'react';
 const local = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 
 // `contacts` and `roles` turn on the "Who did you speak to?" question (used on an organization).
-export default function LogCall({ action, personId, outcomes, hint, contacts, roles }) {
+export default function LogCall({ action, personId, outcomes, hint, contacts, roles, hidden }) {
   const [outcome, setOutcome] = useState('');
   const [when, setWhen] = useState('');
   const [who, setWho] = useState('');
@@ -17,6 +17,7 @@ export default function LogCall({ action, personId, outcomes, hint, contacts, ro
   return (
     <form action={async (fd) => { await action(fd); setOutcome(''); setWhen(''); setWho(''); }}>
       {personId && <input type="hidden" name="person_id" value={personId} />}
+      {hidden && Object.entries(hidden).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
       <input type="hidden" name="outcome" value={outcome} />
       <input type="hidden" name="who" value={who} />
       <input type="hidden" name="next_at" value={when ? new Date(when).toISOString() : ''} />

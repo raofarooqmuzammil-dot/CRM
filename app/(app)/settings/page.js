@@ -1,5 +1,6 @@
 import Link from 'next/link';
-import { getHours } from '../../../lib/hours';
+import { getHours, getTeamZone } from '../../../lib/hours';
+import { TEAM_ZONES } from '../../../lib/zones';
 import { revalidatePath } from 'next/cache';
 import { createClient } from '../../../lib/supabase/server';
 
@@ -30,8 +31,8 @@ async function save(fd, mode) {
 export default async function Settings() {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  const [{ data: me }, hours] = await Promise.all([
-    supabase.from('profiles').select('role').eq('id', user.id).single(), getHours(supabase),
+  const [{ data: me }, hours, teamZone] = await Promise.all([
+    supabase.from('profiles').select('role').eq('id', user.id).single(), getHours(supabase), getTeamZone(supabase),
   ]);
   const data = await Promise.all(LISTS.map((l) =>
     supabase.from(l.table).select('*').order(l.table === 'labels' ? 'name' : 'sort').order('created_at')));
@@ -41,6 +42,12 @@ export default async function Settings() {
     const start = Number(fd.get('start')), end = Number(fd.get('end'));
     if (!(start >= 0 && end <= 24 && start < end)) throw new Error('Start must be before end');
     const { error } = await createClient().from('app_settings').upsert({ key: 'business_hours', value: { start, end } });
+    if (error) throw new Error(error.message);
+    revalidatePath('/', 'layout');
+  }
+  async function saveZone(fd) {
+    'use server';
+    const { error } = await createClient().from('app_settings').upsert({ key: 'team_timezone', value: { zone: String(fd.get('zone')) } });
     if (error) throw new Error(error.message);
     revalidatePath('/', 'layout');
   }
@@ -68,6 +75,16 @@ export default async function Settings() {
             <button type="submit">Save</button>
           </form>
         ) : <p>{hours.start}:00 to {hours.end}:00 (set by the admin)</p>}
+      </section>
+      <section className="panel">
+        <h2>Team time zone</h2>
+        <p className="muted">Decides when "today" and "this week" start on the dashboard.</p>
+        {me?.role === 'admin' ? (
+          <form className="row-form" action={saveZone}>
+            <select name="zone" defaultValue={teamZone}>{TEAM_ZONES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+            <button type="submit">Save</button>
+          </form>
+        ) : <p>{teamZone} (set by the admin)</p>}
       </section>
       <section className="panel">
         <h2>Custom fields</h2>

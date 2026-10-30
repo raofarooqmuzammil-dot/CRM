@@ -3,7 +3,7 @@ import { createClient } from '../../../../lib/supabase/server';
 import { saveField, deleteField } from '../../../actions/fields';
 import AddColumn from '../../../../components/AddColumn';
 
-const ENTITIES = [['person', 'Person fields'], ['organization', 'Organization fields']];
+const ENTITIES = [['person', 'Person fields'], ['organization', 'Organization fields'], ['deal', 'Deal fields']];
 
 export default async function Fields() {
   const supabase = createClient();

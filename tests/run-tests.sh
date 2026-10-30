@@ -5,10 +5,11 @@ here=$(cd "$(dirname "$0")" && pwd); root=$(cd "$here/.." && pwd); tmp=$(mktemp 
 cp -r "$root/lib" "$tmp/lib"; cp "$here"/*.mjs "$tmp"/; echo '{"type":"module"}' > "$tmp/package.json"
 # let plain Node import the project's files
 sed -i "s#from '\./\([a-z]*\)'#from './\1.js'#" "$tmp"/lib/*.js
-for f in import quickadd grid results team lists; do
+for f in import quickadd grid results team lists queue; do
   sed -e "s#^'use server';##" \
       -e "s#^import { redirect }.*#const redirect = (u) => { const e = new Error('REDIRECT'); e.url = u; throw e; };#" \
       -e "s#^import { revalidatePath }.*#const revalidatePath = () => {};#" \
+      -e "s#^import { createClient, getUser }.*#const createClient = () => globalThis.__sb; const getUser = async () => ({ id: 'u1' });#" \
       -e "s#^import { createClient }.*#const createClient = () => globalThis.__sb;#" \
       -e "s#^import { createAdminClient }.*#const createAdminClient = () => globalThis.__admin;#" \
       -e "s#'\.\./\.\./lib/\([a-z/]*\)'#'./lib/\1.js'#" \

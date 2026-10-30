@@ -13,6 +13,7 @@ import { ZONES, zonesInHours } from '../../../lib/zones';
 import { getHours } from '../../../lib/hours';
 import { loadFields, collectCustom } from '../../../lib/custom';
 import { createList } from '../../actions/lists';
+import { callNext, saveQueue } from '../../actions/queue';
 import { pageSize, cleanSp, SORT_OPTIONS, orgColumns, orgRows, pageHref, sortHrefs, parseSort, applySort } from '../../../lib/gridrows';
 
 export default async function Organizations({ searchParams }) {
@@ -20,12 +21,14 @@ export default async function Organizations({ searchParams }) {
   const supabase = getClient();
   const page = Math.max(1, Number(sp.page) || 1);
   const size = pageSize(sp);
-  const [cfields, hours, { data: labels }, { data: people }, { data: lists }, { data: outcomes }] = await Promise.all([
+  const user = await getUser();
+  const [cfields, hours, { data: labels }, { data: people }, { data: lists }, { data: outcomes }, { data: qs }] = await Promise.all([
     loadFields(supabase, 'organization'), getHours(supabase),
     supabase.from('labels').select('id, name, color').order('name'),
     supabase.from('profiles').select('id, full_name').order('full_name'),
     supabase.from('lists').select('id, name, color').order('sort').order('created_at'),
     supabase.from('call_outcomes').select('id, name, color').order('sort').order('created_at'),
+    supabase.from('profiles').select('queue_enabled, queue_auto_next, queue_hours_only').eq('id', user.id).single(),
   ]);
 
   let query = supabase.from('organizations').select(
@@ -115,8 +118,21 @@ export default async function Organizations({ searchParams }) {
       </details>
       <div className="toolbar">
         <SortSelect path="/organizations" sp={cleanSp(sp)} value={sp.s || 'created-desc'} options={SORT_OPTIONS} />
+        <details className="queuebox">
+          <summary>Queue mode: {qs?.queue_enabled ? 'On' : 'Off'}</summary>
+          <form className="queueform" action={saveQueue}>
+            <label className="check"><input type="checkbox" name="enabled" defaultChecked={qs?.queue_enabled} /> Turn on Call next for me</label>
+            <label className="check"><input type="checkbox" name="auto_next" defaultChecked={qs?.queue_auto_next} /> Open the next one after I log a call</label>
+            <label className="check"><input type="checkbox" name="hours_only" defaultChecked={qs?.queue_hours_only} /> Only organizations inside business hours now</label>
+            <button type="submit">Save</button>
+          </form>
+        </details>
+        {qs?.queue_enabled && (
+          <form action={callNext}><input type="hidden" name="list" value={sp.list || ''} /><button type="submit">Call next</button></form>
+        )}
         <ViewSwitch path="/organizations" sp={cleanSp(sp)} view={view} />
       </div>
+      {sp.queue === 'empty' && <p className="panel notice">No more uncalled organizations here. The rest may be on hold for someone else, marked Do not call, private, or outside business hours.</p>}
       <details className="panel" open={filtered}>
         <summary><strong>Filters</strong>{filtered && <span className="muted"> (on)</span>}</summary>
         <form className="grid" method="get">

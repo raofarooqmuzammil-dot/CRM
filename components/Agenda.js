@@ -33,6 +33,7 @@ export default function Agenda({ items, markDone }) {
                 {i.person
                   ? <Link href={`/persons/${i.person.id}`}>{i.person.name}</Link>
                   : i.org && <Link href={`/organizations/${i.org.id}`}>{i.org.name}</Link>}
+                {i.deal && <div className="muted">Deal: <Link href={`/deals/${i.deal.id}`}>{i.deal.title}</Link></div>}
                 {(i.person?.organizations?.name || (i.person && i.org?.name)) && <div className="muted">{i.person?.organizations?.name || i.org?.name}</div>}
               </td>
               <td>{(i.person?.phone || i.org?.phone) && <a href={`tel:${i.person?.phone || i.org.phone}`}>{i.person?.phone || i.org.phone}</a>}</td>

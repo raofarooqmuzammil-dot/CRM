@@ -1,7 +1,7 @@
 const ALLOWED = {
   organizations: 'id name address website phone email notes country time_zone time_zone_guessed labels owner_id visible_to created_by created_at updated_at label_ids custom import_batch_id list_id do_not_call call_count last_called_at last_outcome last_called_by possible_duplicate duplicate_of_org duplicate_of_person phone_key name_key email_key',
   persons: 'id name organization_id phone email labels owner_id visible_to do_not_call notes created_by created_at updated_at label_ids call_count last_called_at last_outcome last_called_by custom import_batch_id phone_key email_key name_key possible_duplicate duplicate_of duplicate_of_org time_zone time_zone_guessed eff_time_zone',
-  pipelines: 'id name sort', stages: 'id pipeline_id name sort', deals: 'id title organization_id person_id pipeline_id stage_id owner_id phone email source_channel created_by status value currency', profiles: 'id full_name role disabled', activities: 'id title type due_at done organization_id person_id assigned_to created_by', labels: 'id name color', lists: 'id name color sort', custom_fields: 'id entity name type options sort hidden', import_batches: 'id file_name stats created_by',
+  pipelines: 'id name sort', stages: 'id pipeline_id name sort', deals: 'id title organization_id person_id pipeline_id stage_id owner_id phone email source_channel created_by status value currency', profiles: 'id full_name role disabled queue_enabled queue_auto_next queue_hours_only', activities: 'id title type due_at done organization_id person_id assigned_to created_by', labels: 'id name color', lists: 'id name color sort', custom_fields: 'id entity name type options sort hidden', import_batches: 'id file_name stats created_by',
 };
 export function makeFake() {
   const db = { profiles: [], activities: [], organizations: [], persons: [], labels: [], lists: [], pipelines: [], stages: [], deals: [], custom_fields: [], import_batches: [] };
@@ -40,5 +40,6 @@ export function makeFake() {
     };
     return b;
   };
-  return { db, from, auth: { getUser: async () => ({ data: { user: { id: 'u1' } } }) } };
+  const rpc = async (name, args) => { const f = globalThis.__rpc?.[name]; if (!f) return { data: null, error: { message: 'no such function ' + name } }; try { return { data: await f(args), error: null }; } catch (e) { return { data: null, error: { message: e.message } }; } };
+  return { db, from, rpc, auth: { getUser: async () => ({ data: { user: { id: 'u1' } } }) } };
 }

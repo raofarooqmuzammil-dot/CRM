@@ -10,6 +10,8 @@ import { CustomInputs, CustomValues } from '../../../../components/CustomFields'
 import { loadFields, collectCustom } from '../../../../lib/custom';
 import { parseWho } from '../../../../lib/who';
 import { claimNext } from '../../../../lib/queue';
+import { resultTrail } from '../../../../lib/trail';
+import { isNotInterested } from '../../../../lib/format';
 import { callNext } from '../../../actions/queue';
 import { getHours } from '../../../../lib/hours';
 import { ZONES, localTime, inHours, zoneLabel } from '../../../../lib/zones';
@@ -29,7 +31,7 @@ export default async function OrganizationPage({ params, searchParams }) {
   const supabase = getClient();
   const user = await getUser();
   const [{ data: org }, { data: me }, { data: labels }, { data: people }, { data: lists }, { data: contacts },
-    { data: acts }, { data: calls }, { data: types }, { data: outcomes }, hours, cfields, { data: roles }] = await Promise.all([
+    { data: acts }, { data: calls }, { data: types }, { data: outcomes }, hours, cfields, { data: roles }, { data: openDeals }, { data: lostReasons }] = await Promise.all([
     supabase.from('organizations').select('*').eq('id', params.id).maybeSingle(),
     supabase.from('profiles').select('role, queue_enabled').eq('id', user.id).single(),
     supabase.from('labels').select('id, name, color').order('name'),
@@ -46,6 +48,8 @@ export default async function OrganizationPage({ params, searchParams }) {
     supabase.from('call_outcomes').select('id, name').order('sort').order('created_at'),
     getHours(supabase), loadFields(supabase, 'organization'),
     supabase.from('contact_roles').select('id, name').order('sort').order('created_at'),
+    supabase.from('deals').select('id, title, lost_prompt_dismissed_at').eq('organization_id', params.id).eq('status', 'open'),
+    supabase.from('lost_reasons').select('id, name').order('sort').order('created_at'),
   ]);
   if (!org) notFound();
 
@@ -63,6 +67,11 @@ export default async function OrganizationPage({ params, searchParams }) {
   const recentByOther = mins !== null && mins < 4320 && org.last_called_by && org.last_called_by !== user.id;
   const zone = org.time_zone;
   const list = lists?.find((l) => l.id === org.list_id);
+  const trail = resultTrail(calls || []);
+  // Offer to mark open deals lost once the latest result is Not interested (until someone chooses Keep open after that call)
+  const dealsToReview = isNotInterested(org.last_outcome)
+    ? (openDeals || []).filter((d) => !d.lost_prompt_dismissed_at || new Date(d.lost_prompt_dismissed_at) < new Date(org.last_called_at))
+    : [];
 
   async function schedule(fd) {
     'use server';
@@ -128,6 +137,21 @@ export default async function OrganizationPage({ params, searchParams }) {
         redirect(nextId ? `/organizations/${nextId}?call=1&q=1${q}` : `/organizations?queue=empty${q}`);
       }
     }
+  }
+  async function markDealLost(fd) {
+    'use server';
+    const { error } = await createClient().from('deals').update({
+      status: 'lost', lost_reason: fd.get('lost_reason') || null, closed_at: new Date().toISOString(),
+    }).eq('id', fd.get('deal_id')).eq('organization_id', params.id);
+    if (error) throw new Error(error.message);
+    revalidatePath('/', 'layout');
+  }
+  async function keepDealOpen(fd) {
+    'use server';
+    const { error } = await createClient().from('deals').update({ lost_prompt_dismissed_at: new Date().toISOString() })
+      .eq('id', fd.get('deal_id')).eq('organization_id', params.id);
+    if (error) throw new Error(error.message);
+    revalidatePath('/', 'layout');
   }
   async function addContact(fd) {
     'use server';
@@ -221,6 +245,41 @@ export default async function OrganizationPage({ params, searchParams }) {
         <CustomValues fields={cfields} values={org.custom} />
         {org.do_not_call && <p className="error">Marked Do not call. Do not phone this organization.</p>}
       </section>
+
+      {trail.length > 1 && (
+        <section className="panel">
+          <h2>How the result changed</h2>
+          <div className="trail">
+            {trail.map((s, i) => (
+              <span key={i} className="trail">
+                {i > 0 && <span className="arrow">then</span>}
+                <span className="step">
+                  <strong>{s.outcome}</strong>{s.count > 1 && ` x${s.count}`}{' '}
+                  <span className="muted"><LocalTime iso={s.at} />{(s.who || s.by) && ` · ${[s.who, s.by].filter(Boolean).join(', ')}`}</span>
+                </span>
+              </span>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {dealsToReview.length > 0 && (
+        <section className="panel notice">
+          <h2>Open deal, but they said Not interested</h2>
+          {dealsToReview.map((d) => (
+            <form className="row-form" action={markDealLost} key={d.id}>
+              <input type="hidden" name="deal_id" value={d.id} />
+              <Link href={`/deals/${d.id}`}><strong>{d.title}</strong></Link>
+              <select name="lost_reason" defaultValue="Not interested" aria-label="Lost reason">
+                <option value="">Lost reason</option>
+                {lostReasons?.map((r) => <option key={r.id} value={r.name}>{r.name}</option>)}
+              </select>
+              <button type="submit" className="ghost danger">Mark lost</button>
+              <button type="submit" className="ghost" formAction={keepDealOpen} formNoValidate>Keep open</button>
+            </form>
+          ))}
+        </section>
+      )}
 
       {org.possible_duplicate && (
         <section className="panel dup">

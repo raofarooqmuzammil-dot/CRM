@@ -32,7 +32,7 @@ export default async function Organizations({ searchParams }) {
   ]);
 
   let query = supabase.from('organizations').select(
-    'id, name, phone, email, website, address, country, time_zone, label_ids, owner_id, list_id, custom, do_not_call, possible_duplicate, visible_to, call_count, last_outcome, last_called_at, last_called_by, persons(count)',
+    'id, name, phone, email, website, address, country, time_zone, label_ids, owner_id, list_id, custom, do_not_call, possible_duplicate, visible_to, call_count, last_outcome, last_called_at, last_called_by, last_interested_at, persons(count)',
     { count: 'exact' });
   const term = String(sp.q || '').replace(/[%,()*]/g, ' ').trim();
   if (term) query = query.or(`name.ilike.%${term}%,phone.ilike.%${term}%,website.ilike.%${term}%,email.ilike.%${term}%`);
@@ -42,6 +42,7 @@ export default async function Organizations({ searchParams }) {
   if (sp.country) query = query.eq('country', sp.country);
   if (sp.owner) query = query.eq('owner_id', sp.owner);
   if (sp.last === 'none') query = query.is('last_outcome', null);
+  else if (sp.last === '__lost') query = query.not('last_interested_at', 'is', null).not('last_outcome', 'ilike', 'interested');
   else if (sp.last) query = query.eq('last_outcome', sp.last);
   if (sp.dup) query = query.eq('possible_duplicate', true);
   if (sp.calling) { const z = zonesInHours(hours); query = query.in('time_zone', z.length ? z : ['none']); }
@@ -157,7 +158,7 @@ export default async function Organizations({ searchParams }) {
               <option value="many">3 or more calls</option></select>
           </label>
           <label>Last result
-            <select name="last" defaultValue={sp.last || ''}><option value="">Any</option><option value="none">Not called yet</option>
+            <select name="last" defaultValue={sp.last || ''}><option value="">Any</option><option value="none">Not called yet</option><option value="__lost">Lost interest</option>
               {outcomes?.map((o) => <option key={o.id} value={o.name}>{o.name}</option>)}</select>
           </label>
           <label>Duplicates

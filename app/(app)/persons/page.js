@@ -30,7 +30,7 @@ export default async function Persons({ searchParams }) {
   ]);
 
   let query = supabase.from('persons').select(
-    'id, name, role, phone, email, notes, label_ids, owner_id, time_zone, eff_time_zone, do_not_call, possible_duplicate, visible_to, custom, call_count, last_outcome, last_called_at, last_called_by, ' + (sp.list ? 'organizations!inner(id, name)' : 'organizations(id, name)'),
+    'id, name, role, phone, email, notes, label_ids, owner_id, time_zone, eff_time_zone, do_not_call, possible_duplicate, visible_to, custom, call_count, last_outcome, last_called_at, last_called_by, last_interested_at, ' + (sp.list ? 'organizations!inner(id, name)' : 'organizations(id, name)'),
     { count: 'exact' });
   const term = String(sp.q || '').replace(/[%,()*]/g, ' ').trim();
   if (term) query = query.or(`name.ilike.%${term}%,phone.ilike.%${term}%,email.ilike.%${term}%`);

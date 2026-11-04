@@ -2,7 +2,11 @@ import Link from 'next/link';
 import { getHours, getTeamZone } from '../../../lib/hours';
 import { TEAM_ZONES } from '../../../lib/zones';
 import { revalidatePath } from 'next/cache';
+import { headers } from 'next/headers';
 import { createClient } from '../../../lib/supabase/server';
+import { createAdminClient } from '../../../lib/supabase/admin';
+import { saveReminders, sendTestEmail } from '../../actions/reminders';
+import { DEFAULTS } from '../../../lib/reminders';
 
 const LISTS = [
   { table: 'lists', title: 'Lists (industries)', colored: true, note: 'One list per organization, like NEMT, Roofers, or HVAC. They become tabs on the Organizations page.' },
@@ -28,12 +32,18 @@ async function save(fd, mode) {
   revalidatePath('/', 'layout');
 }
 
-export default async function Settings() {
+export default async function Settings({ searchParams }) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   const [{ data: me }, hours, teamZone] = await Promise.all([
     supabase.from('profiles').select('role').eq('id', user.id).single(), getHours(supabase), getTeamZone(supabase),
   ]);
+  const { data: remRow } = await supabase.from('app_settings').select('value').eq('key', 'reminders').maybeSingle();
+  const rem = { ...DEFAULTS, ...(remRow?.value || {}) };
+  const host = headers().get('host');
+  const recent = me?.role === 'admin' && process.env.SUPABASE_SERVICE_ROLE_KEY
+    ? (await createAdminClient().from('reminder_log').select('kind, sent_on, emailed, items, error, created_at').order('created_at', { ascending: false }).limit(6)).data || []
+    : [];
   const data = await Promise.all(LISTS.map((l) =>
     supabase.from(l.table).select('*').order(l.table === 'labels' ? 'name' : 'sort').order('created_at')));
 
@@ -76,6 +86,45 @@ export default async function Settings() {
           </form>
         ) : <p>{hours.start}:00 to {hours.end}:00 (set by the admin)</p>}
       </section>
+      {me?.role === 'admin' && (
+        <section className="panel">
+          <h2>Email reminders (to you)</h2>
+          <p className="muted">Times are in the team time zone. Emails go to this one address, never to the callers.</p>
+          {searchParams?.test === 'sent' && <p className="notice panel">Test email sent. Check your inbox.</p>}
+          {searchParams?.test === 'failed' && <p className="error">Test failed: {searchParams.msg}</p>}
+          <form className="grid" action={saveReminders}>
+            <label>Send reminders to<input name="email" type="email" defaultValue={rem.email} placeholder="you@example.com" /></label>
+            <label className="check"><input type="checkbox" name="morning" defaultChecked={rem.morning} /> Morning email</label>
+            <label>Morning time<input type="time" name="morning_time" defaultValue={rem.morning_time} /></label>
+            <label className="check"><input type="checkbox" name="evening" defaultChecked={rem.evening} /> Evening email</label>
+            <label>Evening time<input type="time" name="evening_time" defaultValue={rem.evening_time} /></label>
+            <label className="check"><input type="checkbox" name="hour" defaultChecked={rem.hour} /> Before each follow-up</label>
+            <label>How long before
+              <select name="lead" defaultValue={String(rem.lead)}>{[15, 30, 60, 120].map((m) => <option key={m} value={m}>{m} minutes</option>)}</select>
+            </label>
+            <label className="check"><input type="checkbox" name="missed" defaultChecked={rem.missed} /> Missed alerts</label>
+            <label>First alert after the due time
+              <select name="missed1" defaultValue={String(rem.missed1)}>{[15, 30, 60].map((m) => <option key={m} value={m}>{m} minutes</option>)}</select>
+            </label>
+            <label>Second alert if still not done
+              <select name="missed2" defaultValue={String(rem.missed2)}><option value="0">Off</option>{[30, 60, 120].map((m) => <option key={m} value={m}>{m} minutes after</option>)}</select>
+            </label>
+            <button type="submit">Save</button>
+          </form>
+          <form action={sendTestEmail}><button type="submit" className="ghost">Send test email</button></form>
+          <p className="muted">
+            Setup check: email key {process.env.RESEND_API_KEY ? 'found' : 'MISSING (RESEND_API_KEY)'} · timer secret {process.env.CRON_SECRET ? 'found' : 'MISSING (CRON_SECRET)'} · service key {process.env.SUPABASE_SERVICE_ROLE_KEY ? 'found' : 'MISSING'}.
+          </p>
+          <p className="muted">The timer should open <code>https://{host}/api/cron/reminders</code> every 5 minutes, sending the header <code>Authorization: Bearer YOUR_CRON_SECRET</code>.</p>
+          {recent.length > 0 && (
+            <table><tbody>
+              {recent.map((r, i) => (
+                <tr key={i}><td>{r.sent_on}</td><td>{r.kind}</td><td>{r.emailed ? `sent (${r.items})` : r.error ? `failed: ${r.error}` : 'nothing to send'}</td></tr>
+              ))}
+            </tbody></table>
+          )}
+        </section>
+      )}
       <section className="panel">
         <h2>Team time zone</h2>
         <p className="muted">Decides when "today" and "this week" start on the dashboard.</p>

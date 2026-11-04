@@ -6,16 +6,19 @@ import { createDealFromOrg } from '../app/actions/results';
 
 const KEY = 'callcrm-results-hidden';
 
-export default function ResultsBoard({ columns, hasPipeline }) {
+export default function ResultsBoard({ columns, hasPipeline, focus }) {
   const [hidden, setHidden] = useState([]);
-  const [active, setActive] = useState(columns[0]?.key);
+  const [active, setActive] = useState(columns.some((c) => c.key === focus) ? focus : columns[0]?.key);
   useEffect(() => { try { const s = JSON.parse(localStorage.getItem(KEY) || 'null'); if (Array.isArray(s)) setHidden(s); } catch {} }, []);
   const toggle = (k) => {
     const next = hidden.includes(k) ? hidden.filter((x) => x !== k) : [...hidden, k];
     setHidden(next);
     try { localStorage.setItem(KEY, JSON.stringify(next)); } catch {}
   };
-  const shown = columns.filter((c) => !hidden.includes(c.key));
+  const shown = columns.filter((c) => !hidden.includes(c.key) || c.key === focus);
+  useEffect(() => {
+    if (focus) document.querySelector('[data-focus="true"]')?.scrollIntoView({ inline: 'start', block: 'nearest' });
+  }, [focus]);
   const current = shown.some((c) => c.key === active) ? active : shown[0]?.key;
 
   return (
@@ -41,7 +44,7 @@ export default function ResultsBoard({ columns, hasPipeline }) {
       </div>
       <div className="rboard">
         {shown.map((c) => (
-          <section className={'rcol' + (c.hot ? ' hot' : '') + (current === c.key ? ' active' : '')} key={c.key}>
+          <section className={'rcol' + (c.hot ? ' hot' : '') + (current === c.key ? ' active' : '') + (focus === c.key ? ' focus' : '')} data-focus={focus === c.key ? 'true' : undefined} key={c.key}>
             <h2>{c.name} ({c.count})</h2>
             {c.viewAllHref && c.count > c.cards.length && <p className="muted"><Link href={c.viewAllHref}>View all {c.count}</Link></p>}
             <div className="cards">
@@ -53,6 +56,7 @@ export default function ResultsBoard({ columns, hasPipeline }) {
                     {o.localTime && <span className="muted"> · {o.localTime}</span>}
                     {o.list && <span className="tag" style={{ background: o.list.color + '26', color: o.list.color, marginLeft: 6 }}>{o.list.name}</span>}
                   </div>
+                  {(o.result || o.was) && <div className="was">{[o.result, o.was].filter(Boolean).join(' · ')}</div>}
                   <div className="muted">
                     {o.calledText}{o.calls > 0 && ` · ${o.calls} calls`}
                     {o.followup && <> · Follow-up <LocalTime iso={o.followup} /></>}

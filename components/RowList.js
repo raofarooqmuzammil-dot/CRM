@@ -22,7 +22,8 @@ export default function RowList({ rows, empty }) {
           </div>
           <div>{r.result
             ? <span className="badge" style={{ background: r.result.color + '26', color: r.result.color }}>{r.result.text}</span>
-            : <span className="muted">Not called</span>}</div>
+            : <span className="muted">Not called</span>}
+            {r.was && <div className="was">{r.was}</div>}</div>
           <div className="muted">{r.called}{r.calls > 0 && ` · ${r.calls} calls`}</div>
           <div>{r.followup ? <>Follow-up <LocalTime iso={r.followup} /></> : <span className="muted">No follow-up</span>}</div>
           <div className="muted">{r.owner}{r.extra && <div>{r.extra}</div>}</div>

@@ -25,6 +25,8 @@ export default async function Dashboard() {
   const deals = shapeDeals(d.deals, pipelines || [], stages || []);
   const funnel = shapeFunnel(d.funnel);
   const t = calls.totals;
+  const interested = (outcomes || []).find((o) => o.name.trim().toLowerCase() === 'interested')?.name || 'Interested';
+  const q = (o) => '/results?' + new URLSearchParams(o).toString();
 
   return (
     <>
@@ -34,11 +36,12 @@ export default async function Dashboard() {
       </p>
 
       <div className="stats">
-        <div className="stat"><div className="muted">Calls today</div><div className="num">{t.today}</div></div>
-        <div className="stat"><div className="muted">Calls this week</div><div className="num">{t.week}</div><div className="muted">{delta(t.week, t.lastWeek)}</div></div>
-        <div className="stat"><div className="muted">Interested today</div><div className="num">{t.interestedToday}</div></div>
-        <div className="stat"><div className="muted">Interested this week</div><div className="num">{t.interestedWeek}</div><div className="muted">last week {t.interestedLastWeek}</div></div>
-        <div className="stat"><div className="muted">Follow-ups due today</div><div className="num">{d.followups.due_today}</div><div className="muted">{d.followups.overdue} overdue</div></div>
+        <Link className="stat" href={q({ window: 'today' })}><div className="muted">Calls today</div><div className="num">{t.today}</div></Link>
+        <Link className="stat" href={q({ window: 'week' })}><div className="muted">Calls this week</div><div className="num">{t.week}</div><div className="muted">{delta(t.week, t.lastWeek)}</div></Link>
+        <Link className="stat" href={q({ col: interested, window: 'today' })}><div className="muted">Interested today</div><div className="num">{t.interestedToday}</div></Link>
+        <Link className="stat" href={q({ col: interested, window: 'week' })}><div className="muted">Interested this week</div><div className="num">{t.interestedWeek}</div><div className="muted">last week {t.interestedLastWeek}</div></Link>
+        <Link className="stat" href={q({ col: '__lost', window: 'week' })}><div className="muted">Lost interest this week</div><div className="num">{d.lost.this_week}</div><div className="muted">{d.lost.total} in total</div></Link>
+        <Link className="stat" href="/today"><div className="muted">Follow-ups due today</div><div className="num">{d.followups.due_today}</div><div className="muted">{d.followups.overdue} overdue</div></Link>
       </div>
 
       <section className="panel">
@@ -60,7 +63,9 @@ export default async function Dashboard() {
               {results.rows.map((r) => (
                 <tr key={r.key}>
                   <td><span className="tag" style={{ background: r.color + '26', color: r.color }}>{r.name}</span></td>
-                  {results.columns.map((c) => <td key={c}>{r.counts[c] || 0}</td>)}
+                  {results.columns.map((c) => (
+                    <td key={c}>{r.counts[c] ? <Link className="count" href={q({ list: r.key, col: c === 'Not called' ? '__none' : c === 'Other' ? '__other' : c })}>{r.counts[c]}</Link> : 0}</td>
+                  ))}
                   <td>{r.total}</td>
                   <td><div className="bar"><i style={{ width: r.calledPct + '%' }} /></div><span className="muted">{r.calledPct}%</span></td>
                 </tr>
@@ -74,7 +79,7 @@ export default async function Dashboard() {
         <h2>Funnel</h2>
         {funnel.map((f) => (
           <div className="funnelrow" key={f.label}>
-            <span className="flabel">{f.label}</span>
+            <Link className="flabel" href={f.label === 'Interested' ? q({ col: interested }) : f.label.startsWith('Deal') || f.label === 'Won' ? '/deals' : f.label === 'Called' ? '/organizations?s=contacted-desc' : '/organizations'}>{f.label}</Link>
             <div className="bar"><i style={{ width: f.width + '%' }} /></div>
             <span className="fnum">{f.n}{f.pct !== null && <span className="muted"> ({f.pct}% of previous)</span>}</span>
           </div>
@@ -89,7 +94,7 @@ export default async function Dashboard() {
             {deals.pipelines.length > 1 && <h3>{p.name}</h3>}
             <table>
               <thead><tr><th>Stage</th><th>Open deals</th><th>Value</th></tr></thead>
-              <tbody>{p.stages.map((s) => <tr key={s.name}><td>{s.name}</td><td>{s.open}</td><td>{s.value || '-'}</td></tr>)}</tbody>
+              <tbody>{p.stages.map((s) => <tr key={s.name}><td><Link href={`/deals?pipeline=${p.id}`}>{s.name}</Link></td><td>{s.open}</td><td>{s.value || '-'}</td></tr>)}</tbody>
             </table>
           </div>
         ))}

@@ -1,9 +1,11 @@
 import Link from 'next/link';
 import { getClient, getUser } from '../../../lib/supabase/server';
 import ResultsBoard from '../../../components/ResultsBoard';
-import { localTime } from '../../../lib/zones';
+import { localTime, startOfToday, startOfWeek } from '../../../lib/zones';
+import { getTeamZone } from '../../../lib/hours';
 import { loadBoard } from '../../../lib/results';
 import { pageHref } from '../../../lib/gridrows';
+import { wasInterested } from '../../../lib/format';
 
 const rel = (iso) => {
   const m = Math.round((Date.now() - new Date(iso)) / 60000);
@@ -16,7 +18,10 @@ export default async function Results({ searchParams }) {
   const supabase = getClient();
   const user = await getUser();
   const owner = sp.owner === 'mine' ? user.id : sp.owner || '';
-  const since = sp.window === '7' || sp.window === '30' ? new Date(Date.now() - Number(sp.window) * 86400000).toISOString() : '';
+  const tz = await getTeamZone(supabase);
+  const since = sp.window === 'today' ? startOfToday(tz).toISOString()
+    : sp.window === 'week' ? startOfWeek(tz).toISOString()
+    : sp.window === '7' || sp.window === '30' ? new Date(Date.now() - Number(sp.window) * 86400000).toISOString() : '';
   const order = ORDERS.some(([k]) => k === sp.order) ? sp.order : 'recent';
 
   const [{ data: outcomes }, { data: lists }, { data: people }, { data: pipes }] = await Promise.all([
@@ -46,6 +51,7 @@ export default async function Results({ searchParams }) {
       id: o.id, name: o.name, phone: o.phone || '', localTime: localTime(o.time_zone), list: listOf.get(o.list_id) || null,
       calledText: o.last_called_at ? `${rel(o.last_called_at)}${nameOf.get(o.last_called_by) ? ` by ${nameOf.get(o.last_called_by)}` : ''}` : 'Not called',
       calls: o.call_count || 0, followup: next.get(o.id) || null, dealId: dealOf.get(o.id) || null,
+      result: c.key === '__lost' ? o.last_outcome : '', was: wasInterested(o.last_interested_at, o.last_outcome),
     })),
   }));
 
@@ -64,6 +70,7 @@ export default async function Results({ searchParams }) {
           </label>
           <label>Called
             <select name="window" defaultValue={sp.window || ''}><option value="">Any time</option>
+              <option value="today">Today</option><option value="week">This week</option>
               <option value="7">In the last 7 days</option><option value="30">In the last 30 days</option></select>
           </label>
           <label>Sort cards
@@ -73,7 +80,7 @@ export default async function Results({ searchParams }) {
           {(sp.list || sp.owner || sp.window || sp.order) && <Link href="/results">Clear</Link>}
         </form>
       </section>
-      <ResultsBoard columns={columns} hasPipeline={Boolean(pipes?.length)} />
+      <ResultsBoard columns={columns} hasPipeline={Boolean(pipes?.length)} focus={sp.col || ''} />
     </>
   );
 }

@@ -17,12 +17,18 @@ function EditableCell({ col, value, labelFor, onCommit, status, row }) {
     if (!cancelled.current && String(draft) !== String(value ?? '')) onCommit(draft);
   };
 
-  if (editing && col.type === 'select') {
+  if (col.type === 'select') {
+    // Always a real dropdown (one click opens it, choosing saves it), drawn like plain text.
+    const known = col.options.some(([v]) => v === (value ?? ''));
+    const cls = 'cell cellsel' + (status === 'saving' ? ' saving' : status === 'saved' ? ' saved' : status?.error ? ' err' : '');
     return (
-      <select autoFocus className="cell-in" value={value ?? ''}
-        onChange={(e) => { setEditing(false); onCommit(e.target.value); }} onBlur={() => setEditing(false)}>
-        {col.options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-      </select>
+      <div className={cls} title={status?.error || ''}>
+        <select className="cell-select" value={value ?? ''} aria-label={col.label} onChange={(e) => onCommit(e.target.value)}>
+          {!known && <option value={value}>{value}</option>}
+          {col.options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+        </select>
+        {status?.error && <span className="errtext"> {status.error}</span>}
+      </div>
     );
   }
   if (editing) {

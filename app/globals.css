@@ -171,3 +171,24 @@ h3{font-size:14px;margin:12px 0 6px}
   main{padding:0 12px;margin:14px auto}
   h1{font-size:20px}
 }
+/* brighter header */
+.bar{background:#14201f}
+.bar strong{color:#fff;font-size:17px}
+.bar nav a{opacity:1;color:#fff;font-size:15px;font-weight:500;padding:7px 12px}
+.bar nav a:hover{background:rgba(255,255,255,.2)}
+.bar nav a.active{background:#fff;color:#14201f;font-weight:700}
+.bar .me{opacity:1;color:#fff;font-size:14px}
+.bar button.quiet{background:transparent;color:#fff;border:1px solid rgba(255,255,255,.8);font-weight:500}
+.bar button.quiet:hover{background:rgba(255,255,255,.18)}
+/* dropdown cells */
+.cellsel{padding:0;cursor:default}
+.cell-select{width:100%;border:0;background:transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%2366726f' stroke-width='1.6'/%3E%3C/svg%3E") no-repeat right 8px center;font:inherit;font-size:13px;padding:5px 24px 5px 8px;cursor:pointer;appearance:none;-webkit-appearance:none;color:var(--ink);text-overflow:ellipsis}
+.cell-select:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.rcol.focus{outline:3px solid var(--accent);outline-offset:-3px}
+a.stat{text-decoration:none;color:inherit;display:block}
+a.stat:hover{border-color:var(--accent)}
+td a.count{font-weight:600}
+.was{font-size:12px;color:#8a5a14;margin-top:2px}
+.trail{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}
+.trail .step{background:#fff;border:1px solid var(--line);border-radius:8px;padding:5px 10px;font-size:13px}
+.trail .arrow{color:var(--muted)}
